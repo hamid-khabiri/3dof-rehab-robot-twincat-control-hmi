@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CartesianVelocity" Id="{8d0931a6-7d3e-4aee-83a7-d011ee2f7479}">
+    <Declaration><![CDATA[TYPE ST_CartesianVelocity :
+STRUCT
+	Vx     : LREAL; // Linear velocity along X (mm/s or m/s)
+    Vy     : LREAL; // Linear velocity along Y (mm/s or m/s)
+    Vtheta : LREAL; // Angular velocity around Theta (deg/s or rad/s)
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

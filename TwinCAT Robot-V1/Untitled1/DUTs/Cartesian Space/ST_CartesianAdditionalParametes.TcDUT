@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CartesianAdditionalParametes" Id="{cac8c968-c70d-4981-b2db-ed752000b896}">
+    <Declaration><![CDATA[TYPE ST_CartesianAdditionalParametes :
+STRUCT
+	BetaIncremental : LREAL;
+	RIncremental : LREAL;
+	X_Dir_Abs :LREAL;
+	Y_Dir_Abs :LREAL;
+	WristAngle_Abs : LREAL;
+
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

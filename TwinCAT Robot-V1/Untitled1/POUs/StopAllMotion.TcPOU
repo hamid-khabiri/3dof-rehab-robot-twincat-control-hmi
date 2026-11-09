@@ -1,0 +1,125 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="StopAllMotion" Id="{5fe55818-2cac-4d93-82ef-bf995b96a710}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK StopAllMotion
+VAR_INPUT
+	
+END_VAR
+VAR_OUTPUT
+END_VAR
+
+VAR
+	MotionState : INT;
+	fbStopM1 : MC_Stop;
+    fbStopM2 : MC_Stop;
+    fbStopM3 : MC_Stop;
+	fbHaltM1 : MC_Halt;
+	fbHaltM2 : MC_Halt;
+	fbHaltM3 : MC_Halt;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF GVL_HMI.EmergencyStopIsOnHardware THEN
+	MotionState := 10;  // Pressed Hardware Emergency Stop
+	
+ELSIF GVL_HMI.EmergencyStopIsOnSoftware THEN
+	MotionState := 20;	// Pressed software Emergency Stop
+	
+ELSE
+	MotionState := 30;	// Deactivation All STOPS
+	
+END_IF
+
+
+
+CASE MotionState OF
+
+10:	
+
+    fbStopM1(
+        Axis      := GVL_Axes.Axis1,
+        Execute   := TRUE);   
+
+    fbStopM2(
+        Axis      := GVL_Axes.Axis2,
+        Execute   := TRUE);
+
+    fbStopM3(
+        Axis      := GVL_Axes.Axis3,
+        Execute   := TRUE);
+	
+20:	
+    fbHaltM1(
+        Axis      := GVL_Axes.Axis1,
+        Execute   := TRUE);   
+
+    fbHaltM2(
+        Axis      := GVL_Axes.Axis2,
+        Execute   := TRUE);
+
+    fbHaltM3(
+        Axis      := GVL_Axes.Axis3,
+        Execute   := TRUE);
+30: 
+
+ fbStopM1(
+        Axis      := GVL_Axes.Axis1,
+        Execute   := FALSE);   
+
+    fbStopM2(
+        Axis      := GVL_Axes.Axis2,
+        Execute   := FALSE);
+
+    fbStopM3(
+        Axis      := GVL_Axes.Axis3,
+        Execute   := FALSE);
+
+
+ fbHaltM1(
+        Axis      := GVL_Axes.Axis1,
+        Execute   := FALSE);   
+
+    fbHaltM2(
+        Axis      := GVL_Axes.Axis2,
+        Execute   := FALSE);
+
+    fbHaltM3(
+        Axis      := GVL_Axes.Axis3,
+        Execute   := FALSE);
+
+	
+END_CASE		]]></ST>
+    </Implementation>
+    <LineIds Name="StopAllMotion">
+      <LineId Id="31" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="60" Count="1" />
+      <LineId Id="68" Count="1" />
+      <LineId Id="71" Count="0" />
+      <LineId Id="70" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="40" Count="1" />
+      <LineId Id="10" Count="9" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="45" Count="9" />
+      <LineId Id="44" Count="0" />
+      <LineId Id="72" Count="0" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="90" Count="9" />
+      <LineId Id="87" Count="2" />
+      <LineId Id="76" Count="9" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="37" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

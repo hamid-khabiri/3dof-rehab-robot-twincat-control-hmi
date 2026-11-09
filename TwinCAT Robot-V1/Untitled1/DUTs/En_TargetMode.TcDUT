@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="En_TargetMode" Id="{9ee48cd6-f00a-4f83-9901-56db418c31e9}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE En_TargetMode :
+(
+	eCSP := 4,   // Cyclic Synchronous Position
+    eCSV := 2,   // Cyclic Synchronous Velocity
+    eCST := 1   // Cyclic Synchronous Torque
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

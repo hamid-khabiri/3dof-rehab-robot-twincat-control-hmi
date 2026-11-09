@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_EndeffectorPosition" Id="{526462ef-7f1b-451d-b909-72416e6bc83a}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	WristAngle : LREAL;
+	X_Dir : LREAL;
+	Y_Dir : LREAL;
+	R_Dir : LREAL;
+	Beta : LREAL;
+	
+	X_Dir_Abs: LREAL;
+	Y_Dir_Abs: LREAL;
+	R_Dir_Abs: LREAL;
+	BetaFromAbsolute : LREAL;
+	WristAngle_Abs: LREAL;
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_FireflyFromUnity" Id="{230c9f5d-802b-44e9-ba11-bcb974266758}">
+    <Declaration><![CDATA[{attribute 'pack_mode' := '1'}
+TYPE ST_FireflyFromUnity :
+STRUCT
+    nGameStatus  : INT;    // 0 = menu/results, 1/2/3 = playing Level 1/2/3, 4 = paused
+    bExitPressed : BOOL;   // TRUE for ~0.2 s when an Exit button is pressed, then FALSE
+    bWrongFlower : BOOL;   // TRUE for ~0.2 s each time a wrong flower is selected, then FALSE
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

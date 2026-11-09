@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_Language" Id="{05ecbb03-c813-4538-ab95-10d8e5d7a60a}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_Language :
+(
+	EN,
+    FR
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

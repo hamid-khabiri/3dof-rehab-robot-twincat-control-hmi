@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_FireflyToUnity" Id="{9d301b2d-3137-4776-92dc-e9c35f7115e9}">
+    <Declaration><![CDATA[TYPE ST_FireflyToUnity :
+STRUCT
+    fX : REAL;   // -100..+100 %, 0 = home (middle of the scene), +100 = right edge of the garden
+    fY : REAL;   // -100..+100 %, 0 = home (middle of the scene), +100 = top edge (robot forward)
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

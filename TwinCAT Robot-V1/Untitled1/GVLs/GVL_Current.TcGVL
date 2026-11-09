@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_Current" Id="{af95ae5d-cf32-4f68-a5ef-b4b4a0732478}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	MotorCurrentM1_mA AT %I* : DINT; // PDO value from EPOS4 [mA]
+	MotorCurrentM2_mA AT %I* : DINT;
+	MotorCurrentM3_mA AT %I* : DINT;
+	MotorCurrentM1_A : LREAL;  // // Converted current [A]
+	MotorCurrentM2_A : LREAL;
+	MotorCurrentM3_A : LREAL;
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

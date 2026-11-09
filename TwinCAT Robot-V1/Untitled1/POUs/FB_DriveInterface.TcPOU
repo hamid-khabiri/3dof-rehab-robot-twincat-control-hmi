@@ -1,0 +1,185 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_DriveInterface" Id="{8a220163-88d7-4c61-b531-50b23c68dc6e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_DriveInterface
+VAR_INPUT
+TorqueSetpoints : ST_JointTorque;
+Config           : ST_TherapyConfig;
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+	
+	lrRatedTorque_Axis1 : LREAL := 810.425; 
+    lrRatedTorque_Axis2 : LREAL := 383.934;
+    lrRatedTorque_Axis3 : LREAL := 382.060;
+	
+	fbTorqueAxis1    : MC_TorqueControl;
+    fbTorqueAxis2    : MC_TorqueControl;
+    fbTorqueAxis3    : MC_TorqueControl;
+	lrTorqueSetpoint_Pct : ST_JointTorque;
+	
+	lrEffectiveSpeedHigh  : LREAL;
+    lrEffectiveSpeedLow   : LREAL;
+	ErrorAxisA: BOOL;
+	ErrorAxisID: UDINT;
+	Execute_A : BOOL ;
+	Execute_B : BOOL ;
+	Execute_C : BOOL ;
+	TurnOnMotors: BOOL := FALSE;
+	
+	
+	ErrorAxisID_A: UDINT;
+	ErrorAxisID_B: UDINT;
+	ErrorAxisB: BOOL;
+	ErrorAxisC: BOOL;
+	ErrorAxisID_C: UDINT;
+	torqueofaxisB: BOOL;
+	BisBusy: BOOL;
+	BisActive: BOOL;
+	torqueofaxisA: BOOL;
+	AisBusy: BOOL;
+	AisActive: BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// 1. Clamp Positive Game Limit between 0.0 and +GlobalVelocityLimit
+lrEffectiveSpeedHigh := LIMIT(
+    0.0, 
+    ABS(Config.GlobalVelocityLimit), // THIS Data should changed based on game currently I put equal tp g;pbalspeedlimitHigh
+    ABS(Config.GlobalVelocityLimit)
+);
+
+// 2. Clamp Negative Game Limit between -GlobalVelocityLimit and 0.0
+lrEffectiveSpeedLow  := LIMIT(
+    -ABS(Config.GlobalVelocityLimit), // THIS Data should changed based on game currently I put equal tp g;pbalspeedlimitHigh
+    -ABS(Config.GlobalVelocityLimit), 
+    0.0
+);
+
+
+
+// SCALING NM to Percentage
+// Motor 1 (Axis 1)
+lrTorqueSetpoint_Pct.M1 := (TorqueSetpoints.M1 / lrRatedTorque_Axis1) * 100.0;
+
+// Motor 2 (Axis 2)
+lrTorqueSetpoint_Pct.M2 := (TorqueSetpoints.M2 / lrRatedTorque_Axis2) * 100.0;
+// Motor 3 (Axis 3)
+lrTorqueSetpoint_Pct.M3 := (TorqueSetpoints.M3 / lrRatedTorque_Axis3) * 100.0;
+
+lrTorqueSetpoint_Pct.M1 := TorqueSetpoints.M1;
+lrTorqueSetpoint_Pct.M2 := TorqueSetpoints.M2;
+lrTorqueSetpoint_Pct.M3 := TorqueSetpoints.M3;
+
+
+// lrTorqueSetpoint_Pct.M1 := 20.0;
+// lrTorqueSetpoint_Pct.M2 := 50.0;
+// lrTorqueSetpoint_Pct.M3 := -50.0;	
+
+//lrTorqueSetpoint_Pct.M1 := TorqueSetpoints.M1;
+//lrTorqueSetpoint_Pct.M2 := TorqueSetpoints.M2;
+//lrTorqueSetpoint_Pct.M3 := TorqueSetpoints.M3;
+
+Execute_A := GVL_HMI.ContinueTOWorkspaceLimits;
+Execute_B := GVL_HMI.ContinueTOWorkspaceLimits;
+Execute_C := GVL_HMI.ContinueTOWorkspaceLimits;
+
+
+fbTorqueAxis1(
+    Axis             := GVL_Axes.Axis1,
+    Execute          := Execute_A,                 // Keep TRUE to stay active
+    ContinuousUpdate := TRUE,                 // CRITICAL: Allows changing torque every cycle
+    Torque           := lrTorqueSetpoint_Pct.M1,   // Input from Jacobian
+    Relative         := FALSE,  // Absolute Torque
+	TorqueRamp         :=   100.0,               
+    VelocityLimitHigh:= lrEffectiveSpeedHigh,        // Safety: Prevent runaway if resistance is lost
+    VelocityLimitLow := lrEffectiveSpeedLow,
+	InTorque => torqueofaxisA,
+	Busy=> AisBusy,
+	Active => AisActive,
+	Error => ErrorAxisA ,
+	ErrorID => ErrorAxisID_A
+);
+
+// -----------------------------------------------------------------------------
+// AXIS 2 TORQUE CONTROL
+// -----------------------------------------------------------------------------
+fbTorqueAxis2(
+    Axis             := GVL_Axes.Axis2,
+    Execute          := Execute_B,
+    ContinuousUpdate := TRUE,
+    Torque           := lrTorqueSetpoint_Pct.M2,
+    Relative         := FALSE,
+	TorqueRamp         := 100.0,
+    VelocityLimitHigh:= lrEffectiveSpeedHigh,        // Safety: Prevent runaway if resistance is lost
+    VelocityLimitLow := lrEffectiveSpeedLow,
+	InTorque => torqueofaxisB,
+	Busy=> BisBusy,
+	Active => BisActive,
+	
+	Error => ErrorAxisB ,
+	ErrorID => ErrorAxisID_B
+);
+
+// -----------------------------------------------------------------------------
+// AXIS 3 TORQUE CONTROL
+// -----------------------------------------------------------------------------
+fbTorqueAxis3(
+    Axis             := GVL_Axes.Axis3,
+    Execute          := Execute_C,
+    ContinuousUpdate := TRUE,
+    Torque           := lrTorqueSetpoint_Pct.M3,
+    Relative         := FALSE,
+	TorqueRamp         :=   100.0,
+    VelocityLimitHigh:= lrEffectiveSpeedHigh,        // Safety: Prevent runaway if resistance is lost
+    VelocityLimitLow := lrEffectiveSpeedLow,
+	Error => ErrorAxisC,
+	ErrorID => ErrorAxisID_C
+);
+
+// DriveMotors := TRUE;
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_DriveInterface">
+      <LineId Id="89" Count="11" />
+      <LineId Id="85" Count="3" />
+      <LineId Id="19" Count="5" />
+      <LineId Id="26" Count="1" />
+      <LineId Id="106" Count="0" />
+      <LineId Id="282" Count="0" />
+      <LineId Id="284" Count="1" />
+      <LineId Id="283" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="330" Count="1" />
+      <LineId Id="191" Count="0" />
+      <LineId Id="326" Count="2" />
+      <LineId Id="371" Count="0" />
+      <LineId Id="413" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="495" Count="1" />
+      <LineId Id="137" Count="0" />
+      <LineId Id="33" Count="9" />
+      <LineId Id="241" Count="1" />
+      <LineId Id="131" Count="0" />
+      <LineId Id="240" Count="0" />
+      <LineId Id="132" Count="0" />
+      <LineId Id="43" Count="12" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="233" Count="1" />
+      <LineId Id="236" Count="0" />
+      <LineId Id="238" Count="0" />
+      <LineId Id="221" Count="1" />
+      <LineId Id="57" Count="10" />
+      <LineId Id="454" Count="0" />
+      <LineId Id="69" Count="0" />
+      <LineId Id="84" Count="0" />
+      <LineId Id="223" Count="1" />
+      <LineId Id="71" Count="1" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="162" Count="0" />
+      <LineId Id="161" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

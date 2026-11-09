@@ -1,0 +1,73 @@
+<div class="TcHmi_Controls_System_TcHmiContent"
+     data-tchmi-type="TcHmi.Controls.System.TcHmiContent"
+     data-tchmi-background-color='{"color":"rgba(247,250,252,1)"}'>
+
+  <!-- ====================================================
+       S0 — Welcome / Splash  (Spec §7.1)
+       Markup is plain HTML styled by Themes/Motiva.theme.css
+       and wired by Scripts/S0_Welcome.js (event delegation).
+       ==================================================== -->
+  <div class="mv-s0-stage" id="MvS0">
+
+    <!-- ambient workspace arcs -->
+    <svg class="mv-s0-arcs" viewBox="0 0 600 600" aria-hidden="true">
+      <circle cx="300" cy="300" r="120"/>
+      <circle cx="300" cy="300" r="190"/>
+      <circle cx="300" cy="300" r="260" class="mv-sweep"/>
+    </svg>
+
+    <!-- wordmark: the O is the robot -->
+    <div>
+      <div class="mv-s0-wordmark" aria-label="Motiva">
+        <span class="mv-t">M</span><span class="mv-o-robot" aria-hidden="true">
+          <svg viewBox="0 0 100 100">
+            <circle class="mv-o-ring" cx="50" cy="50" r="38"/>
+            <g class="mv-o-orbit"><circle class="mv-o-dot" cx="50" cy="12" r="9"/></g>
+          </svg>
+        </span><span class="mv-t">T</span><span class="mv-t">I</span><span class="mv-t">V</span><span class="mv-t">A</span>
+      </div>
+      <p class="mv-s0-subtitle" data-mv-i18n="S0.Subtitle">Upper-Limb Rehabilitation Robot</p>
+    </div>
+
+    <h1 class="mv-s0-welcome" data-mv-i18n="S0.Welcome">Welcome to Motiva</h1>
+
+    <!-- partner logos: replace the placeholder marks with real SVG logos -->
+    <div class="mv-s0-logos">
+      <div class="mv-logo"><div class="mv-mark">UofA</div><div class="mv-cap" data-mv-i18n="S0.University">University</div></div>
+      <div class="mv-logo-sep"></div>
+      <div class="mv-logo"><div class="mv-mark">IDEA</div><div class="mv-cap">IDEA Lab</div></div>
+      <div class="mv-logo-sep"></div>
+      <div class="mv-logo">
+        <div class="mv-mark" aria-hidden="true">
+          <svg viewBox="0 0 100 100" width="60%" height="60%">
+            <circle cx="50" cy="50" r="34" fill="none" stroke="#1A365D" stroke-width="9"/>
+            <circle cx="50" cy="16" r="10" fill="#2F855A"/>
+          </svg>
+        </div>
+        <div class="mv-cap">Motiva</div>
+      </div>
+    </div>
+
+    <!-- language toggle: EN left, FR right -->
+    <div class="mv-lang" id="MvS0_Lang" role="group" aria-label="Language">
+      <div class="mv-thumb" aria-hidden="true"></div>
+      <button type="button" id="MvS0_BtnEn" aria-pressed="true">EN</button>
+      <button type="button" id="MvS0_BtnFr" aria-pressed="false">FR</button>
+    </div>
+
+    <!-- Next -->
+    <button type="button" class="mv-s0-next" id="MvS0_BtnNext">
+      <span data-mv-i18n="S0.Next">Next</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6"/>
+      </svg>
+    </button>
+
+    <div class="mv-s0-foot">
+      <span><span class="mv-dot"></span><span data-mv-i18n="S0.Supervision">For use under therapist supervision</span></span>
+      <span>HMI v1.1</span>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,152 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_ThreeAxisSafety" Id="{c715875d-0217-4eab-8643-d2862800a7a1}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_ThreeAxisSafety
+VAR_INPUT
+	rDir : LREAL ;
+	beta : LREAL ;
+	theta : LREAL ;
+		
+END_VAR
+VAR_OUTPUT
+	AnyError   : BOOL;    (* live indication: some axis in error *)
+END_VAR
+  
+VAR
+	(* Status readbacks *)
+    fbStatM1 : MC_ReadStatus;
+    fbStatM2 : MC_ReadStatus;
+    fbStatM3 : MC_ReadStatus;
+	
+	
+
+    fbStopM1Safety : MC_Stop;
+    fbStopM2Safety : MC_Stop;
+    fbStopM3Safety : MC_Stop;
+	
+
+    anyErrInternal : BOOL;
+	anyMicroswitchTrue: BOOL;
+	//Errortype: STRING;
+	// fbKinematicForSafety :FB_Kinematic;
+	
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+(*
+fbStopM1Safety(
+            Axis         := GVL_Axes.Axis1,
+			
+            Deceleration := 1000.0);
+		fbStopM2Safety(
+            Axis         := GVL_Axes.Axis2,
+            Deceleration := 1000.0);
+			
+		fbStopM3Safety(
+            Axis         := GVL_Axes.Axis3,
+            Deceleration := 1000.0);
+fbKinematicForSafety(
+    q1 := GVL_RobotData.Q1_Actual, 
+    q2 := GVL_RobotData.Q2_Actual, 
+    q3 := GVL_RobotData.Q3_Actual, 
+ 
+    Theta => theta,
+    R_Dir => rDir,
+	Beta => beta    
+);
+
+
+(* === Read status of all three axes === *)
+fbStatM1(
+    Axis   := GVL_Axes.Axis1,
+    Enable := TRUE);
+
+fbStatM2(
+    Axis   := GVL_Axes.Axis2,
+    Enable := TRUE);
+
+fbStatM3(
+    Axis   := GVL_Axes.Axis3,
+    Enable := TRUE);
+	
+// Micro_Switch
+IF (GVL_MicroSwitch.dwMicroSwitchDriverA <> 0) OR (GVL_MicroSwitch.dwMicroSwitchDriverB <> 0) THEN
+anyMicroswitchTrue := TRUE;
+GVL_MessageStaus.MessageStaus := 'Microswitch is ON, Out OF ROM';
+fbStopM1Safety.Execute :=TRUE;
+		fbStopM2Safety.Execute :=TRUE;
+		fbStopM3Safety.Execute :=TRUE;
+		
+END_IF
+
+// OUT OF ROM
+IF (rDir < 90 OR rDir > 468) OR 
+   (beta < -60 OR beta > 60) OR 
+   (theta < -30 OR theta > 30) THEN 
+	 
+GVL_MessageStaus.MessageStaus := 'OUT OF ROM';
+		fbStopM1Safety.Execute :=TRUE;
+		fbStopM2Safety.Execute :=TRUE;
+		fbStopM3Safety.Execute :=TRUE;
+END_IF
+(* An axis is considered “in error” if ErrorStop is TRUE *)
+anyErrInternal :=
+       fbStatM1.Error
+    OR fbStatM2.Error
+    OR fbStatM3.Error
+	OR (GVL_Axes.Axis1.NcToPlc.ErrorCode <> 0)
+    OR (GVL_Axes.Axis2.NcToPlc.ErrorCode <> 0) 
+    OR (GVL_Axes.Axis3.NcToPlc.ErrorCode <> 0);
+
+(* === Stop command to all axes  === *)
+
+IF anyErrInternal THEN
+
+		
+	GVL_MessageStaus.MessageStaus := 'Cycle Time Error';
+
+END_IF
+
+*)]]></ST>
+    </Implementation>
+    <LineIds Name="FB_ThreeAxisSafety">
+      <LineId Id="257" Count="0" />
+      <LineId Id="322" Count="0" />
+      <LineId Id="274" Count="9" />
+      <LineId Id="273" Count="0" />
+      <LineId Id="261" Count="3" />
+      <LineId Id="266" Count="3" />
+      <LineId Id="258" Count="2" />
+      <LineId Id="23" Count="11" />
+      <LineId Id="113" Count="1" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="153" Count="0" />
+      <LineId Id="175" Count="0" />
+      <LineId Id="287" Count="1" />
+      <LineId Id="286" Count="0" />
+      <LineId Id="247" Count="0" />
+      <LineId Id="161" Count="0" />
+      <LineId Id="163" Count="0" />
+      <LineId Id="162" Count="0" />
+      <LineId Id="289" Count="1" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="174" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="209" Count="0" />
+      <LineId Id="284" Count="1" />
+      <LineId Id="36" Count="5" />
+      <LineId Id="128" Count="1" />
+      <LineId Id="127" Count="0" />
+      <LineId Id="59" Count="3" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="177" Count="0" />
+      <LineId Id="176" Count="0" />
+      <LineId Id="89" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="179" Count="0" />
+      <LineId Id="178" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

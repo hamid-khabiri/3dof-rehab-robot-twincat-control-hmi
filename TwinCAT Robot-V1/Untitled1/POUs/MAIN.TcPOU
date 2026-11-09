@@ -1,0 +1,838 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="MAIN" Id="{08a87bb6-f9be-437e-bda0-ac5df65c2e69}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+	
+	fbMC_Power1: MC_Power;
+	xEnable: BOOL;
+	xControlPower: BOOL;
+	fbMC_Power2: MC_Power;
+	fbMC_Power3: MC_Power;
+	fbMC_Reset: MC_Reset;
+	fbMC_Reset1: MC_Reset;
+	xAxisReset: BOOL;
+	fbMC_Reset2: MC_Reset;
+	fbMC_Reset3: MC_Reset;
+	xMachineReset: BOOL;
+	eState: INT := 0;
+	// Homming
+	HomingDone: BOOL;
+	HomingStart: BOOL;
+	fbDoHoming : FB_DoHoming;
+	bHomingError: BOOL;
+	 WaitForStartHoming : TON;
+	 rtStartHoming : R_TRIG;
+	 HomingProgressTime : TON;
+	//Safety
+	fbSafety : FB_ThreeAxisSafety;
+	fbEmergencyStop : StopAllMotion;
+	RobotIsNotSafe: BOOL;
+	
+	AbsEncDegNutralPos: UDINT;
+	
+	// READ POSITION
+	fbJointReader    : FB_JointStateReader;
+	ActualJoints     : ST_JointState;      // Joint feedback (q, q_dot, M)
+	ActualCartesian : ST_CartesianState;
+	JointDataTransedFromCartesianSpace : ST_JointState;
+	CartesianDataTransedFromJointSpace : ST_CartesianState;
+	ActualCartesianPose_PERCENTAGE : ST_CartesianPose;
+	ActualCartesianAbsolute : ST_CartesianAdditionalParametes;
+	AdditionalPose : ST_CartesianAdditionalParametes;
+	fbKinematicRobot : FB_RobotKinematics;
+	fbReadPosM1 : MC_ReadActualPosition;
+	fbReadPosM2 : MC_ReadActualPosition;
+	fbReadPosM3 : MC_ReadActualPosition;
+	AA: LREAL;
+	xDir: LREAL;
+	yDir: LREAL;
+	theta: LREAL;
+	betaAngle : LREAL;
+	justfortestrepository : INT;
+	EndeffectorVelociybyJacobian : ST_CartesianVelocity;
+	
+	// visualization
+	Point1 : INT;
+	
+	fbRobotisActive : FB_RobotIsActive;
+	
+	
+
+
+// Active Mode
+	A_Point : ARRAY [1..3] OF LREAL;  // x, y , and theta (wrist) in A point
+	B_Point : ARRAY [1..3] OF LREAL;  // x, y , and theta (wrist) in A point
+	C_Point : ARRAY [1..3] OF LREAL;  // x, y , and theta (wrist) in A point
+	
+	
+	OperationalMode : En_TargetMode;
+	bExecuteChangingMode : BOOL := FALSE;
+	bSwitchopModeDone : BOOL := FALSE;
+	fbSwitchMode : FB_SwitchOpMode;
+	BActiveMode: BOOL := FALSE;
+	ANNModeIsDone : BOOL;
+	// Games
+	myGameLauncher : FB_LaunchGame;
+	eActiveGame : E_GameID;
+	
+	fbSorterGame : FB_SorterGame;
+	fbCrazyCar : FB_CrazyCarGame;
+	fbFireflyGame : FB_FireflyGame;
+
+	
+	// Force Torque Sensor
+	fbForceTorqueSensor : FB_ForceTorqueSensor;
+	
+	//HMI
+	fbMicroswitchCheck : MicroswitchCheck;
+	fbUserSecurity : FB_UserSecuring;
+	
+	StatusOfEmergencyStop: STRING;
+	EmergenywasActive: BOOL;
+	
+	// Rehabilitation mode
+	 eMode : E_RehabMode;
+	 fbTherapyManager : FB_TherapyManager;
+	 
+	 fbDriveInterface: FB_DriveInterface;
+	 
+	TargetJointsextractedfromfbThetapyManger : ST_JointTorque;
+	fbHMITemporary : FB_HMI_TherapyConfiguration;
+	ERRORIDAxis1: UDINT;
+	ERRORIDAxis2: UDINT;
+	ERRORIDAxis3: UDINT;
+	fbPeelingGame : FB_PeelingGame;
+	stGameTargetTorque : ST_JointTorque;
+	fbVirtuallWall : FB_VirtuallWall;
+	// hardwaresafety
+	FirsttimeCheckMicroawitch: BOOL := TRUE;
+	CheckingHardwareAcrivation : HardwareWallCheck;
+	Hardwaresafetylimit : BOOL;
+	
+	WallSetPointXandY : ARRAY[1..4, 1..2] OF LREAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(* Actuaros Current Status *)
+// You can Delete this section 
+// This section is implemented Just for checking safety 
+GVL_Current.MotorCurrentM1_A :=
+    DINT_TO_LREAL(GVL_Current.MotorCurrentM1_mA) / 1000.0;
+GVL_Current.MotorCurrentM2_A :=
+    DINT_TO_LREAL(GVL_Current.MotorCurrentM2_mA) / 1000.0;
+GVL_Current.MotorCurrentM3_A :=
+    DINT_TO_LREAL(GVL_Current.MotorCurrentM3_mA) / 1000.0;
+
+
+
+//HMI 
+fbMicroswitchCheck();
+fbUserSecurity();
+
+
+
+
+
+// Read Status
+GVL_Axes.Axis1.ReadStatus();
+GVL_Axes.Axis2.ReadStatus();
+GVL_Axes.Axis3.ReadStatus();
+(*
+//Games
+myGameLauncher(
+    bTrigger    := GVL_HMI.bLaunchGameSpongCmd,
+    sExePath    := 'C:\Users\hkhabiri\Desktop\PongV2\RobotGame_BuildV4\Pong.exe', 
+    sWorkingDir := 'C:\Users\hkhabiri\Desktop\PongV2\RobotGame_BuildV4\'
+	  
+);
+
+myGameLauncher(
+    bTrigger    := GVL_HMI.bLaunchGamePeelerCmd,
+    sExePath    := 'C:\Users\hkhabiri\Desktop\MotivaGames\KIWIexe\First_Project.exe', 
+    sWorkingDir := 'C:\Users\hkhabiri\Desktop\MotivaGames\KIWIexe\'
+	  
+);
+
+*)
+// Read Absolute Encoder
+
+//AbsEncDegNutralPos := GVL_AbsoluteEncoder.SSI_Raw32;
+
+
+// Binding TO HMI Variables
+xControlPower := GVL_HMI.StartRobot_HMI;
+
+
+//EnablefbMC_Power1(
+	IF xControlPower THEN
+		xEnable := TRUE;
+	ELSE
+			xEnable := FALSE;
+	END_IF
+	
+
+
+// Force-Torque Sensor	
+		
+	
+	fbMC_Power1(
+		Axis:= GVL_Axes.Axis1 , 
+		
+		Enable_Positive:= xEnable , 
+		Enable_Negative:= xEnable , 
+		Override:= 100.0 );
+	fbMC_Power2(
+		Axis:= GVL_Axes.Axis2 , 
+		
+		Enable_Positive:= xEnable , 
+		Enable_Negative:= xEnable , 
+		Override:= 100.0 );	
+	fbMC_Power3(
+		Axis:= GVL_Axes.Axis3 , 
+		
+		Enable_Positive:= xEnable , 
+		Enable_Negative:= xEnable , 
+		Override:= 100.0  );
+		
+	IF estate <> 20 THEN 
+		fbMC_Power1.Enable:= xEnable;
+		fbMC_Power2.Enable:= xEnable;
+		fbMC_Power3.Enable:= xEnable;
+		
+					
+	END_IF
+	
+	IF estate = 20 THEN 
+		
+	xControlPower:= FALSE; 
+	
+	END_IF
+	
+// Reset
+	IF xMachineReset THEN
+		xAxisReset:= TRUE;
+		ELSE
+		xAxisReset:= FALSE;
+		END_IF
+	
+(*	fbMC_Reset1(
+		Axis:= GVL_Axes.Axis1 , 
+		Execute:= xAxisReset AND GVL_Axes.Axis1.Status.Error);
+	fbMC_Reset2(
+		Axis:= GVL_Axes.Axis2 , 
+		Execute:= xAxisReset AND GVL_Axes.Axis2.Status.Error);
+	fbMC_Reset3(
+		Axis:= GVL_Axes.Axis3 , 
+		Execute:= xAxisReset AND GVL_Axes.Axis3.Status.Error); *)
+
+// EmergencyConditionStaus
+IF GVL_Axes.Axis1.Status.Error OR GVL_Axes.Axis2.Status.Error OR GVL_Axes.Axis3.Status.Error THEN
+	ERRORIDAxis1 := GVL_Axes.Axis1.Status.ErrorID;
+	ERRORIDAxis2 := GVL_Axes.Axis2.Status.ErrorID;
+	ERRORIDAxis3 := GVL_Axes.Axis3.Status.ErrorID;
+	GVL_HMI.EmergencyStopIsOnHardware := TRUE; // YOu can change it if in middle of the work Drivers go to Error
+END_IF
+
+IF GVL_HMI.EmergencyStopIsOnSoftware OR GVL_HMI.EmergencyStopIsOnHardware THEN
+	eState := E_MainState.Fault;
+// fbEmergencyStop ();	
+EmergenywasActive := TRUE;
+
+END_IF
+
+IF EmergenywasActive AND NOT GVL_HMI.EmergencyStopIsOnSoftware AND NOT GVL_HMI.EmergencyStopIsOnHardware THEN
+eState := E_MainState.Fault;
+//fbEmergencyStop ();	
+EmergenywasActive := FALSE;
+END_IF
+
+// Safety
+IF HomingDone THEN
+fbSafety(AnyError => RobotIsNotSafe );		
+END_IF
+
+//READ PHYSICAL MOTOR HARDWARE
+// Updates Joint Positions (q), Velocities (q_dot), and Torques (M)
+fbJointReader(
+    Axis1      := GVL_Axes.Axis1,
+    Axis2      := GVL_Axes.Axis2,
+    Axis3      := GVL_Axes.Axis3,
+    JointState => ActualJoints
+);
+
+
+fbKinematicRobot( JointData_INPUT:= ActualJoints,
+			CartesianData_INPUT := ActualCartesian,
+    		JointData_Transed =>  JointDataTransedFromCartesianSpace ,
+			CartesianData_Transed => CartesianDataTransedFromJointSpace,
+			Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic => ActualCartesianPose_PERCENTAGE,
+			AdditionalPOSE  => AdditionalPose);
+			
+			
+fbHMITemporary(CartesianDataTransedFromJointSpace :=CartesianDataTransedFromJointSpace, WallSetPointXandY=> WallSetPointXandY);
+(*
+// Reading encoder data
+fbReadPosM1(Axis := GVL_Axes.Axis1, Enable := TRUE);
+fbReadPosM2(Axis := GVL_Axes.Axis2, Enable := TRUE);
+fbReadPosM3(Axis := GVL_Axes.Axis3, Enable := TRUE);
+	GVL_RobotData.Q1_Actual := fbReadPosM1.Position;
+	GVL_RobotData.Q2_Actual := fbReadPosM2.Position;
+	GVL_RobotData.Q3_Actual := fbReadPosM3.Position;
+		
+// KinematicDATA
+fbKinematic(q1:=GVL_RobotData.Q1_Actual, 
+				q2:=GVL_RobotData.Q2_Actual,
+				q3:=GVL_RobotData.Q3_Actual);	
+	
+*)
+	
+// Force-Torque Sensor
+fbForceTorqueSensor(CartesianState := ActualCartesian);   // Force-Torque Calibration and Reading
+
+
+	
+	
+	
+// Robot Operate		
+CASE eState OF
+
+E_MainState.Init: (* INIT *)
+
+    HomingDone := FALSE;
+    HomingStart := FALSE;
+
+    WaitForStartHoming(
+        IN := xControlPower,
+        PT := T#0.2S
+    );
+	IF xControlPower THEN
+		GVL_HMI.StartHomingDisable_HMI := FALSE;
+	END_IF
+
+    IF WaitForStartHoming.Q THEN
+        eState := E_MainState.Homing;
+    END_IF
+
+
+E_MainState.Homing: (* HOMING *)
+
+    WaitForStartHoming(
+        IN := FALSE,
+        PT := T#2S
+    );
+
+    HomingStart := TRUE;
+HomingProgressTime (IN :=HomingStart, PT :=T#40S);
+GVL_HMI.Homingprogress :=
+    DINT_TO_UINT(
+        TIME_TO_DINT(HomingProgressTime.ET) * 100 / 40000
+    );
+    fbDoHoming(
+        HStart := HomingStart,
+        HM123Done => HomingDone,
+        HomingError => bHomingError
+    );
+	// Display Homing Error on HMI
+	IF bHomingError THEN
+		GVL_HMI.HomingError := TRUE;
+	END_IF
+	
+	//
+
+    IF HomingDone AND HomingProgressTime.Q THEN
+        HomingStart := FALSE;
+		GVL_HMI.ContinueToSensorCalibrationDisable_HMI := TRUE;
+        eState := E_MainState.ChangingDriverMode;
+    END_IF
+	
+	E_MainState.ChangingDriverMode:  // Changing Driver MODE ; Switch to CST
+	 OperationalMode := En_TargetMode.eCST; // Ensure this is defined in your Enum
+        fbSwitchMode(TargetMode := OperationalMode, Done => bSwitchopModeDone);
+        
+        IF bSwitchopModeDone THEN
+            bExecuteChangingMode := FALSE;
+			fbMC_Power1.Enable := TRUE;
+			fbMC_Power2.Enable := TRUE;
+			fbMC_Power3.Enable := TRUE;
+            eState := E_MainState.RunningTherapy;
+			IF  FirsttimeCheckMicroawitch THEN
+				GVL_hmi.CheckMicroswitchLinearMax := FALSE;
+				GVL_hmi.CheckMicroswitchLinearMin := FALSE;
+				GVL_hmi.CheckMicroswitchRotationLeft := FALSE;
+				GVL_hmi.CheckMicroswitchRotationRight := FALSE;
+				GVL_HMI.CheckMicroswitchWristLeft := FALSE;
+				GVL_HMI.CheckMicroswitchWristRight := FALSE;
+				FirsttimeCheckMicroawitch := FALSE;
+
+			END_IF
+        ELSE
+            bExecuteChangingMode := TRUE;
+        END_IF
+	
+
+    E_MainState.RunningTherapy: (* RUN therapy --- CORE!*)
+	
+
+	 	
+  // Activation of Hardware limit
+
+CheckingHardwareAcrivation(HardwareActive => Hardwaresafetylimit);
+
+IF Hardwaresafetylimit THEN
+	
+	GVL_HMI.HardwareLimitisActived := TRUE;
+	eState :=E_MainState.Fault;
+	
+	
+END_IF
+
+
+ 
+
+   
+// 2. The Robot is active! Feed the Config and Data to the Manager
+            fbTherapyManager(
+                Enable         := TRUE,
+                Config         := GVL_HMI.CurrentTherapyConfig, // Passes your entire STRUCT!
+				WallSetPointXandY := WallSetPointXandY,
+				SimpleJointTorqueObtainedFromGames := stGameTargetTorque,
+				ActualCartesian := CartesianDataTransedFromJointSpace,
+				fbKinematics := fbKinematicRobot,
+				TargetJointsTorque => TargetJointsextractedfromfbThetapyManger 
+           );
+			
+			fbDriveInterface( TorqueSetpoints := TargetJointsextractedfromfbThetapyManger,Config := GVL_HMI.CurrentTherapyConfig);
+      
+ // GAME
+ myGameLauncher(
+    bLaunchSpong     := GVL_HMI.bLaunchGameSpongCmd,
+    bLaunchPeeler    := GVL_HMI.bLaunchGamePeelerCmd,
+    bLaunchGoldMiner := GVL_HMI.bLaunchGameGoldMiner,
+    bLaunchBalloon   := GVL_HMI.bLaunchGameBalloonAssesment,
+    bLaunchSnowWiper := GVL_HMI.bLaunchGameSnowWiper,
+    bLaunchSorter    := GVL_HMI.bLaunchGameSorter,
+    bLaunchFlower    := GVL_HMI.bLaunchGameFlower,
+    bLaunchCrazyCar  := GVL_HMI.bLaunchGameCrazyCar,
+    eActiveGame      => eActiveGame
+);
+
+fbPeelingGame(
+    bEnable                   := (eActiveGame = E_GameID.PEELING),
+    stCartesianPosePercentage := ActualCartesianPose_PERCENTAGE,   // From Kinematics
+    CartesianForcefY       := ActualCartesian.Force.Fy,      // From Kinematics
+    CartesianVy := CartesianDataTransedFromJointSpace.Velocity.Vy
+	
+  //  stJointTargetTorque       => stGameTargetTorque     // Output torque from game
+);
+
+// Sorter Game
+
+fbSorterGame(
+    bEnable                    := (eActiveGame = E_GameID.SORTER),
+    stCartesianPosePercentage  := ActualCartesianPose_PERCENTAGE,                     // From Kinematics
+    CartesianForcefX           := ActualCartesian.Force.Fx,                           // From Force Sensor
+    CartesianVx                := CartesianDataTransedFromJointSpace.Velocity.Vx     // From Kinematics
+    
+  //  stJointTargetTorque        => stGameTargetTorque                                  // Output torque from game
+);
+
+// Crazy Car Game
+fbCrazyCar(
+    bEnable                   := (eActiveGame = E_GameID.CRAZY_CAR),
+    stCartesianPosePercentage := ActualCartesianPose_PERCENTAGE,                         // Y 0..100 %
+    fWristAngleDeg            := CartesianDataTransedFromJointSpace.Position.Theta,      // degrees
+    CartesianVtheta           := CartesianDataTransedFromJointSpace.Velocity.Vtheta,
+    CartesianMtheta           := ActualCartesian.Force.Mtheta                           // from force sensor
+	//stJointTargetTorque       => stGameTargetTorque     // Output torque from game
+);	
+
+
+// Firefly Garden
+fbFireflyGame(
+    bEnable                    := (eActiveGame = E_GameID.FLOWER),
+    stCartesianPosePercentage  := ActualCartesianPose_PERCENTAGE        // From Kinematics (X and Y)
+//  stJointTargetTorque        => stGameTargetTorque                    // Output torque from game (always 0: motion only)
+);	
+			
+stGameTargetTorque.M1 := 0.0;
+stGameTargetTorque.M2 := 0.0;
+stGameTargetTorque.M3 := 0.0;
+
+
+CASE eActiveGame OF
+
+    E_GameID.PEELING:
+
+        stGameTargetTorque :=
+            fbPeelingGame.stJointTargetTorque;
+
+
+    E_GameID.SORTER:
+
+        stGameTargetTorque :=
+            fbSorterGame.stJointTargetTorque;
+
+
+    E_GameID.CRAZY_CAR:
+
+        stGameTargetTorque :=
+            fbCrazyCar.stJointTargetTorque;
+
+
+    ELSE
+
+        // No selected game generates torque
+
+        stGameTargetTorque.M1 := 0.0;
+        stGameTargetTorque.M2 := 0.0;
+        stGameTargetTorque.M3 := 0.0;
+
+END_CASE;
+
+ 
+
+
+
+
+(*
+		fbKinematic(q1:=GVL_RobotData.Q1_Actual, 
+				q2:=GVL_RobotData.Q2_Actual,
+				q3:=GVL_RobotData.Q3_Actual,
+				X_Dir => xDir, 
+				Y_Dir => yDir,
+				Theta => theta,
+				Beta => betaAngle);
+				*)
+				
+	//eMode := E_RehabMode.Passive;
+	
+		 // Changing Operational Mode	
+       // DoTaskSpaceControl();
+	   
+	   (*
+	   
+	   30 : (* ActiveMode *)
+	   // Changing Operation mode  to CSV
+	  IF bExecuteChangingMode THEN
+			OperationalMode := En_TargetMode.eCSV;
+   			fbSwitchMode(TargetMode := OperationalMode, Done => bSwitchopModeDone );
+		END_IF
+		
+		IF  NOT bSwitchopModeDone  THEN
+			
+			bExecuteChangingMode := TRUE;
+		ELSE
+			bExecuteChangingMode := FALSE ; 
+			eState :=34;
+		END_IF
+
+	34: // NEW STATE: CLEAR NC ERRORS
+    fbMC_Reset1(Axis := GVL_Axes.Axis1, Execute := TRUE);
+    fbMC_Reset2(Axis := GVL_Axes.Axis2, Execute := TRUE);
+    fbMC_Reset3(Axis := GVL_Axes.Axis3, Execute := TRUE);
+
+    IF fbMC_Reset1.Done AND fbMC_Reset2.Done AND fbMC_Reset3.Done THEN
+        fbMC_Reset1(Axis := GVL_Axes.Axis1, Execute := FALSE);
+        fbMC_Reset2(Axis := GVL_Axes.Axis2, Execute := FALSE);
+		fbMC_Reset3(Axis := GVL_Axes.Axis3, Execute := FALSE);
+        estate := 35; // Move to Enable only after NC is clear
+    END_IF
+		35: 
+	fbMC_Power1.Enable := TRUE;
+	fbMC_Power2.Enable := TRUE;    
+	fbMC_Power3.Enable := TRUE;
+    IF fbMC_Power1.Status AND fbMC_Power2.Status AND fbMC_Power3.Status THEN
+        
+        fbRobotisActive(bActiveModeIsDone => BActiveMode)  ;   // Now it is safe to execute the Jacobian control
+    END_IF
+	IF BActiveMode THEN
+		eState := 40;
+	END_IF
+    
+    // Safety check: if an error occurs, drop back to Passive
+    IF RobotIsNotSafe THEN
+        eState := 20;
+	END_IF
+	
+	
+
+		
+    
+    50: (* PREPARE FOR IMPEDANCE - Switch to CST *)
+       
+
+    60: (* RUN IMPEDANCE CONTROL *)
+        // Note: In CST mode, you are sending raw torque commands to the drives
+      IF fbMC_Power1.Status AND fbMC_Power2.Status AND fbMC_Power3.Status THEN
+		  
+		 fbRobotIsInIpedenceMode( bDone => ANNModeIsDone);
+		 
+	  END_IF
+
+    IF ANNModeIsDone THEN
+		eState := 70;
+	END_IF
+	
+	*)
+ 
+	 E_MainState.Fault: // motors disable
+	 
+	fbMC_Power1.Enable := FALSE;
+	fbMC_Power2.Enable := FALSE;    
+	fbMC_Power3.Enable := FALSE;
+	   
+END_CASE
+
+
+		
+		]]></ST>
+    </Implementation>
+    <LineIds Name="MAIN">
+      <LineId Id="2622" Count="0" />
+      <LineId Id="2626" Count="1" />
+      <LineId Id="2629" Count="0" />
+      <LineId Id="2628" Count="0" />
+      <LineId Id="2630" Count="0" />
+      <LineId Id="2623" Count="0" />
+      <LineId Id="2631" Count="1" />
+      <LineId Id="2624" Count="1" />
+      <LineId Id="2252" Count="0" />
+      <LineId Id="1288" Count="0" />
+      <LineId Id="1293" Count="0" />
+      <LineId Id="1672" Count="0" />
+      <LineId Id="1670" Count="0" />
+      <LineId Id="1289" Count="3" />
+      <LineId Id="39" Count="3" />
+      <LineId Id="382" Count="1" />
+      <LineId Id="1159" Count="3" />
+      <LineId Id="1743" Count="0" />
+      <LineId Id="1158" Count="0" />
+      <LineId Id="1820" Count="0" />
+      <LineId Id="1815" Count="4" />
+      <LineId Id="1814" Count="0" />
+      <LineId Id="2389" Count="0" />
+      <LineId Id="412" Count="0" />
+      <LineId Id="2390" Count="0" />
+      <LineId Id="416" Count="0" />
+      <LineId Id="415" Count="0" />
+      <LineId Id="413" Count="1" />
+      <LineId Id="384" Count="0" />
+      <LineId Id="1095" Count="0" />
+      <LineId Id="385" Count="0" />
+      <LineId Id="43" Count="2" />
+      <LineId Id="58" Count="0" />
+      <LineId Id="61" Count="2" />
+      <LineId Id="1377" Count="0" />
+      <LineId Id="1381" Count="1" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="477" Count="2" />
+      <LineId Id="46" Count="4" />
+      <LineId Id="66" Count="4" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="91" Count="4" />
+      <LineId Id="84" Count="0" />
+      <LineId Id="522" Count="2" />
+      <LineId Id="526" Count="1" />
+      <LineId Id="525" Count="0" />
+      <LineId Id="493" Count="0" />
+      <LineId Id="480" Count="0" />
+      <LineId Id="516" Count="2" />
+      <LineId Id="520" Count="1" />
+      <LineId Id="519" Count="0" />
+      <LineId Id="515" Count="0" />
+      <LineId Id="102" Count="0" />
+      <LineId Id="128" Count="1" />
+      <LineId Id="132" Count="2" />
+      <LineId Id="130" Count="0" />
+      <LineId Id="112" Count="1" />
+      <LineId Id="103" Count="0" />
+      <LineId Id="120" Count="1" />
+      <LineId Id="119" Count="0" />
+      <LineId Id="124" Count="1" />
+      <LineId Id="122" Count="0" />
+      <LineId Id="351" Count="0" />
+      <LineId Id="1898" Count="0" />
+      <LineId Id="1991" Count="0" />
+      <LineId Id="2254" Count="0" />
+      <LineId Id="2256" Count="1" />
+      <LineId Id="1994" Count="0" />
+      <LineId Id="1993" Count="0" />
+      <LineId Id="1990" Count="0" />
+      <LineId Id="1900" Count="0" />
+      <LineId Id="1906" Count="0" />
+      <LineId Id="1901" Count="0" />
+      <LineId Id="1908" Count="0" />
+      <LineId Id="1903" Count="0" />
+      <LineId Id="1902" Count="0" />
+      <LineId Id="1914" Count="0" />
+      <LineId Id="1910" Count="0" />
+      <LineId Id="1915" Count="1" />
+      <LineId Id="1913" Count="0" />
+      <LineId Id="1912" Count="0" />
+      <LineId Id="1899" Count="0" />
+      <LineId Id="325" Count="0" />
+      <LineId Id="1036" Count="0" />
+      <LineId Id="355" Count="0" />
+      <LineId Id="352" Count="0" />
+      <LineId Id="2210" Count="0" />
+      <LineId Id="2220" Count="0" />
+      <LineId Id="2219" Count="0" />
+      <LineId Id="2213" Count="4" />
+      <LineId Id="2211" Count="0" />
+      <LineId Id="2222" Count="0" />
+      <LineId Id="2228" Count="0" />
+      <LineId Id="2231" Count="0" />
+      <LineId Id="2398" Count="0" />
+      <LineId Id="2401" Count="2" />
+      <LineId Id="2406" Count="0" />
+      <LineId Id="2911" Count="2" />
+      <LineId Id="618" Count="0" />
+      <LineId Id="617" Count="0" />
+      <LineId Id="620" Count="4" />
+      <LineId Id="619" Count="0" />
+      <LineId Id="353" Count="0" />
+      <LineId Id="1891" Count="0" />
+      <LineId Id="2074" Count="1" />
+      <LineId Id="1892" Count="2" />
+      <LineId Id="2209" Count="0" />
+      <LineId Id="2170" Count="0" />
+      <LineId Id="2173" Count="0" />
+      <LineId Id="2171" Count="1" />
+      <LineId Id="1895" Count="2" />
+      <LineId Id="135" Count="0" />
+      <LineId Id="287" Count="1" />
+      <LineId Id="1421" Count="8" />
+      <LineId Id="1454" Count="2" />
+      <LineId Id="1430" Count="14" />
+      <LineId Id="1528" Count="2" />
+      <LineId Id="1527" Count="0" />
+      <LineId Id="1445" Count="4" />
+      <LineId Id="2071" Count="0" />
+      <LineId Id="2068" Count="2" />
+      <LineId Id="2073" Count="0" />
+      <LineId Id="2072" Count="0" />
+      <LineId Id="1450" Count="2" />
+      <LineId Id="1526" Count="0" />
+      <LineId Id="1453" Count="0" />
+      <LineId Id="301" Count="0" />
+      <LineId Id="2151" Count="1" />
+      <LineId Id="2154" Count="8" />
+      <LineId Id="2734" Count="8" />
+      <LineId Id="2733" Count="0" />
+      <LineId Id="2163" Count="1" />
+      <LineId Id="2153" Count="0" />
+      <LineId Id="1407" Count="0" />
+      <LineId Id="302" Count="1" />
+      <LineId Id="2260" Count="0" />
+      <LineId Id="2183" Count="0" />
+      <LineId Id="2261" Count="0" />
+      <LineId Id="2197" Count="0" />
+      <LineId Id="2794" Count="1" />
+      <LineId Id="2801" Count="0" />
+      <LineId Id="2800" Count="0" />
+      <LineId Id="2804" Count="0" />
+      <LineId Id="2807" Count="0" />
+      <LineId Id="2806" Count="0" />
+      <LineId Id="2805" Count="0" />
+      <LineId Id="2802" Count="1" />
+      <LineId Id="2797" Count="0" />
+      <LineId Id="2796" Count="0" />
+      <LineId Id="2763" Count="0" />
+      <LineId Id="2745" Count="0" />
+      <LineId Id="2516" Count="0" />
+      <LineId Id="2512" Count="0" />
+      <LineId Id="2198" Count="2" />
+      <LineId Id="2916" Count="0" />
+      <LineId Id="2393" Count="0" />
+      <LineId Id="2519" Count="1" />
+      <LineId Id="2242" Count="0" />
+      <LineId Id="2204" Count="0" />
+      <LineId Id="2233" Count="0" />
+      <LineId Id="2235" Count="0" />
+      <LineId Id="2184" Count="1" />
+      <LineId Id="2368" Count="9" />
+      <LineId Id="2367" Count="0" />
+      <LineId Id="2380" Count="5" />
+      <LineId Id="2409" Count="0" />
+      <LineId Id="2386" Count="0" />
+      <LineId Id="2379" Count="0" />
+      <LineId Id="3023" Count="0" />
+      <LineId Id="3022" Count="0" />
+      <LineId Id="3025" Count="0" />
+      <LineId Id="3136" Count="6" />
+      <LineId Id="3024" Count="0" />
+      <LineId Id="2387" Count="0" />
+      <LineId Id="3143" Count="6" />
+      <LineId Id="3152" Count="0" />
+      <LineId Id="2365" Count="0" />
+      <LineId Id="3405" Count="6" />
+      <LineId Id="3404" Count="0" />
+      <LineId Id="2366" Count="0" />
+      <LineId Id="3261" Count="32" />
+      <LineId Id="2359" Count="0" />
+      <LineId Id="2358" Count="0" />
+      <LineId Id="2353" Count="1" />
+      <LineId Id="2186" Count="2" />
+      <LineId Id="505" Count="0" />
+      <LineId Id="510" Count="0" />
+      <LineId Id="626" Count="0" />
+      <LineId Id="625" Count="0" />
+      <LineId Id="627" Count="2" />
+      <LineId Id="2149" Count="0" />
+      <LineId Id="2169" Count="0" />
+      <LineId Id="1600" Count="0" />
+      <LineId Id="1223" Count="0" />
+      <LineId Id="2150" Count="0" />
+      <LineId Id="490" Count="0" />
+      <LineId Id="305" Count="0" />
+      <LineId Id="2181" Count="1" />
+      <LineId Id="614" Count="1" />
+      <LineId Id="634" Count="0" />
+      <LineId Id="711" Count="0" />
+      <LineId Id="714" Count="0" />
+      <LineId Id="712" Count="0" />
+      <LineId Id="715" Count="0" />
+      <LineId Id="717" Count="1" />
+      <LineId Id="726" Count="0" />
+      <LineId Id="724" Count="1" />
+      <LineId Id="719" Count="0" />
+      <LineId Id="723" Count="0" />
+      <LineId Id="720" Count="0" />
+      <LineId Id="643" Count="0" />
+      <LineId Id="788" Count="7" />
+      <LineId Id="798" Count="0" />
+      <LineId Id="796" Count="0" />
+      <LineId Id="704" Count="0" />
+      <LineId Id="649" Count="0" />
+      <LineId Id="783" Count="1" />
+      <LineId Id="782" Count="0" />
+      <LineId Id="785" Count="2" />
+      <LineId Id="636" Count="0" />
+      <LineId Id="708" Count="0" />
+      <LineId Id="857" Count="1" />
+      <LineId Id="639" Count="2" />
+      <LineId Id="616" Count="0" />
+      <LineId Id="647" Count="0" />
+      <LineId Id="918" Count="2" />
+      <LineId Id="935" Count="2" />
+      <LineId Id="946" Count="4" />
+      <LineId Id="976" Count="0" />
+      <LineId Id="974" Count="0" />
+      <LineId Id="977" Count="0" />
+      <LineId Id="975" Count="0" />
+      <LineId Id="959" Count="0" />
+      <LineId Id="922" Count="0" />
+      <LineId Id="968" Count="1" />
+      <LineId Id="923" Count="0" />
+      <LineId Id="921" Count="0" />
+      <LineId Id="630" Count="1" />
+      <LineId Id="859" Count="2" />
+      <LineId Id="632" Count="1" />
+      <LineId Id="126" Count="0" />
+      <LineId Id="569" Count="0" />
+      <LineId Id="275" Count="0" />
+      <LineId Id="285" Count="0" />
+      <LineId Id="284" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

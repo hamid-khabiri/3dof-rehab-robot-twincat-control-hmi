@@ -1,0 +1,178 @@
+/**
+        About font inclusion in TcHmi
+
+    As a default we include Roboto Condensed (in Fonts folder) as a webfont which will render latin, greek, vietnamese, cyrillic glyphs.
+
+    If Roboto does not render the glyphs we use some preinstalled fallback
+    'Microsoft YaHei' (Windows), 'Hiragino Sans GB' (macOS/iOS), 'Noto Sans CJK SC/TC' (Android), 'WenQuanYi Micro Hei' (Linux) renders chinese
+    'Meiryo' (Windows), 'Hiragino Kaku Gothic Pro' (macOS/iOS), 'Noto Sans CJK JP' (Android) renders japanese
+
+    For other fonts you can add the woff files into the TcHmi project and 
+    add a @font-face section yourself.
+    The noto family from Google tries to cover all of the world, is free to use and fits nicely with Roboto
+    see https://www.google.com/get/noto/ and https://fonts.google.com/earlyaccess 
+
+    The font usage is defined in the main CSS file of the active theme (for example Themes/Base/Style.css).
+*/
+
+html {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: normal;
+}
+#Button_EN {
+    border-radius: 30px 0px 0px 30px;
+}
+
+#Button_FR {
+    border-radius: 0px 30px 30px 0px;
+}
+
+#Button_NEXT {
+    border-radius: 40px;
+}
+
+#Button_NEXT:active {
+    background-color: #0F2440 !important;
+}
+
+#LOGIN {
+    border-radius: 40px;
+}
+
+#AddThr {
+    border-radius: 50px;
+}
+#RectID {
+    border-radius: 20px;
+}
+
+#Button_AddUser {
+    border-radius: 40px;
+}
+
+
+
+#Button_AddUser:active {
+    background-color: #0F2440 !important;
+}
+
+#Button_GuestMode {
+    border-radius: 40px;
+}
+
+
+
+#Button_GuestMode:active {
+    background-color: #0F2440 !important;
+}
+
+#TcHmiImage_8 {
+    pointer-events: none;
+}
+
+#TcHmiImage_13 {
+    pointer-events: none;
+}
+
+#TcHmiImage_10 {
+    pointer-events: none;
+}
+#TcHmiImage_11 {
+    pointer-events: none;
+}
+#TcHmiImage_12 {
+    pointer-events: none;
+}
+#TcHmiImage_9 {
+    pointer-events: none;
+}
+#TcHmiImage_14 {
+    pointer-events: none;
+}
+
+#TcHmiButton_4 {
+    border-radius: 20px;
+}
+#TcHmiButton_5 {
+    border-radius: 20px;
+}
+#TcHmiButton_6 {
+    border-radius: 20px;
+}
+
+#TcHmiButton_7 {
+    border-radius: 20px;
+}
+
+#TcHmiButton_9 {
+    border-radius: 20px;
+}
+
+#TcHmiButton_8 {
+    border-radius: 20px;
+}
+
+
+
+
+
+#TcHmiButton_27 {
+    border-radius: 20px;
+}
+#TcHmiButton_28 {
+    border-radius: 20px;
+}
+#TcHmiButton_16 {
+    border-radius: 20px;
+}
+#TcHmiButton_17 {
+    border-radius: 20px;
+}
+
+#TcHmiButton_19 {
+    border-radius: 20px;
+}
+
+#TcHmiButton_20 {
+    border-radius: 20px;
+}
+#TcHmiButton_30 {
+    border-radius: 20px;
+}
+
+#TcHmiImage_67 {
+    pointer-events: none;
+}
+#TcHmiImage_68 {
+    pointer-events: none;
+}
+#TcHmiImage_69 {
+    pointer-events: none;
+}
+
+#TcHmiLinearGauge_1 svg {
+    transform: scale(0.7);
+    transform-origin: center;
+}
+
+#TcHmiLinearGauge_2 svg {
+    transform: scale(0.7);
+    transform-origin: center;
+}
+
+@keyframes wallBlink {
+    0%, 49% {
+        opacity: 0.3;
+    }
+
+    50%, 100% {
+        opacity: 0;
+    }
+}
+
+#TcHmiRectangle_64 {
+    animation: wallBlink 0.4s infinite;
+    pointer-events: none;
+}

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_JointPose" Id="{3e8c4f3a-43af-465e-b857-9625d3542b46}">
+    <Declaration><![CDATA[TYPE ST_JointPose :
+STRUCT
+	q1 : LREAL;
+    q2 : LREAL;
+    q3 : LREAL;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

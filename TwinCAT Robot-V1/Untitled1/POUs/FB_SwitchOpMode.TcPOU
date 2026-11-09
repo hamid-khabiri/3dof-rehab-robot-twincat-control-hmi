@@ -1,0 +1,262 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SwitchOpMode" Id="{784e7b9c-b476-4631-a342-a5b2481de8c3}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SwitchOpMode
+VAR_INPUT
+		
+    TargetMode       : En_TargetMode;   // ENUM instead of magic numbers
+   
+END_VAR
+VAR_OUTPUT
+	Done  : BOOL;
+    Busy  : BOOL;
+    Error : BOOL;
+	
+END_VAR
+VAR
+	fbDisable : MC_Power;
+    fbEnable  : MC_Power;
+    state     : INT := 0;
+	tWait    : TON;
+	fbStopM1 : MC_Halt;
+	fbStopM2 : MC_Halt;
+	fbStopM3 : MC_Halt;
+	fbPowerM1 : MC_Power ;
+	fbPowerM2 : MC_Power ;
+	fbPowerM3 : MC_Power ;
+	fbWriteModeM1 : MC_WriteDriveOperationMode;
+	fbWriteModeM2 : MC_WriteDriveOperationMode;
+	fbWriteModeM3 : MC_WriteDriveOperationMode;
+	DriveOperationMode : E_DriveOperationMode;
+	
+	fbReadModeM1 :  MC_ReadDriveOperationMode;
+	fbReadModeM2 :  MC_ReadDriveOperationMode;
+	fbReadModeM3 :  MC_ReadDriveOperationMode;
+	
+	
+	bStopCmd: BOOL;
+	bPowerEnable: BOOL;
+	bWriteMode: BOOL;
+	bWait: BOOL;
+	bReadMode: BOOL;
+	Test : ARRAY [1..5] OF INT; 
+	Testii: INT := 1;
+	LastErrorCode: UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[	
+	// ===== FB calls (always executed) =====
+
+fbStopM1(Axis := GVL_Axes.Axis1, Execute := bStopCmd, Deceleration := 100.0);
+fbStopM2(Axis := GVL_Axes.Axis2, Execute := bStopCmd, Deceleration := 100.0);
+fbStopM3(Axis := GVL_Axes.Axis3, Execute := bStopCmd, Deceleration := 100.0);
+
+fbPowerM1(Axis := GVL_Axes.Axis1, Enable := bPowerEnable);
+fbPowerM2(Axis := GVL_Axes.Axis2, Enable := bPowerEnable);
+fbPowerM3(Axis := GVL_Axes.Axis3, Enable := bPowerEnable);
+
+fbWriteModeM1(
+    Axis := GVL_Axes.Axis1,
+    Execute := bWriteMode,
+    DriveOperationMode := TO_SINT(TargetMode)
+);
+fbWriteModeM2(
+    Axis := GVL_Axes.Axis2,
+    Execute := bWriteMode,
+    DriveOperationMode := TO_SINT(TargetMode)
+);
+fbWriteModeM3(
+    Axis := GVL_Axes.Axis3,
+    Execute := bWriteMode,
+    DriveOperationMode := TO_SINT(TargetMode)
+);
+
+fbReadModeM1(
+    Axis := GVL_Axes.Axis1,
+    Execute := bReadMode
+);
+
+fbReadModeM2(
+    Axis := GVL_Axes.Axis2,
+    Execute := bReadMode
+);
+
+fbReadModeM3(
+    Axis := GVL_Axes.Axis3,
+    Execute := bReadMode
+);
+
+
+
+tWait(IN := bWait, PT := T#1S);
+	
+	
+CASE state OF	
+	
+0: // IDLE
+    Done := FALSE;
+    Busy := FALSE;
+    Error := FALSE;
+
+    bStopCmd     := FALSE;
+    bPowerEnable := TRUE;
+    bWriteMode   := FALSE;
+    bWait        := FALSE;
+    Busy := TRUE;
+    state := 10;
+    
+
+
+10: // STOP MOTION
+    bStopCmd := TRUE;
+
+    IF fbStopM1.Done AND fbStopM2.Done AND fbStopM3.Done THEN
+        bStopCmd := FALSE;
+        state := 11;
+    END_IF
+	
+11: // WAIT FOR STANDSTILL
+    IF GVL_Axes.Axis1.Status.StandStill 
+    AND GVL_Axes.Axis2.Status.StandStill 
+    AND GVL_Axes.Axis3.Status.StandStill THEN
+        state := 20; // Proceed to Power Off
+    END_IF
+
+
+20: // POWER OFF
+    bPowerEnable := FALSE;
+
+    IF NOT fbPowerM1.Status
+    AND NOT fbPowerM2.Status
+    AND NOT fbPowerM3.Status THEN
+        bWait := TRUE;
+        state := 30;
+    END_IF
+
+
+30: // WAIT 2s
+    IF tWait.Q THEN
+        bWait := FALSE;
+        state := 40;
+    END_IF
+
+
+40: // WRITE MODE
+    bWriteMode := TRUE;
+
+    IF fbWriteModeM1.Done
+    AND fbWriteModeM2.Done
+    AND fbWriteModeM3.Done THEN
+        bWriteMode := FALSE;
+        state := 50;
+    END_IF
+
+    IF fbWriteModeM1.Error
+    OR fbWriteModeM2.Error
+    OR fbWriteModeM3.Error THEN
+		bWriteMode := FALSE;
+        Error := TRUE;
+        state := 100;
+		Testii := 11;
+		 LastErrorCode := fbWriteModeM1.ErrorID;  
+    END_IF
+
+
+50: // POWER ON
+   // bPowerEnable := TRUE;
+    state := 60;
+
+
+60: // DONE
+    bReadMode := TRUE;
+
+    IF fbReadModeM1.Done
+    AND fbReadModeM2.Done
+    AND fbReadModeM3.Done THEN
+
+        bReadMode := FALSE;
+
+        IF fbReadModeM1.DriveOperationMode = TO_SINT(TargetMode)
+        AND fbReadModeM2.DriveOperationMode = TO_SINT(TargetMode)
+        AND fbReadModeM3.DriveOperationMode = TO_SINT(TargetMode) THEN
+
+            Done := TRUE;
+            Busy := FALSE;
+            state := 0;   // FINISHED SUCCESSFULLY
+
+        ELSE
+            Error := TRUE;   // Mode mismatch
+            state := 100;
+			Testii := 2;
+        END_IF
+    END_IF
+
+    IF fbReadModeM1.Error
+    OR fbReadModeM2.Error
+    OR fbReadModeM3.Error THEN
+        Error := TRUE;
+        state := 100;
+		Testii := 3;
+	END_IF
+	
+	100: // Error
+		bWriteMode := FALSE;
+
+END_CASE	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_SwitchOpMode">
+      <LineId Id="273" Count="0" />
+      <LineId Id="296" Count="24" />
+      <LineId Id="400" Count="0" />
+      <LineId Id="403" Count="12" />
+      <LineId Id="401" Count="1" />
+      <LineId Id="399" Count="0" />
+      <LineId Id="321" Count="0" />
+      <LineId Id="274" Count="4" />
+      <LineId Id="322" Count="8" />
+      <LineId Id="332" Count="0" />
+      <LineId Id="334" Count="6" />
+      <LineId Id="343" Count="3" />
+      <LineId Id="448" Count="0" />
+      <LineId Id="450" Count="4" />
+      <LineId Id="449" Count="0" />
+      <LineId Id="347" Count="32" />
+      <LineId Id="505" Count="0" />
+      <LineId Id="380" Count="1" />
+      <LineId Id="498" Count="0" />
+      <LineId Id="502" Count="0" />
+      <LineId Id="382" Count="8" />
+      <LineId Id="421" Count="18" />
+      <LineId Id="500" Count="0" />
+      <LineId Id="440" Count="6" />
+      <LineId Id="393" Count="0" />
+      <LineId Id="501" Count="0" />
+      <LineId Id="447" Count="0" />
+      <LineId Id="455" Count="1" />
+      <LineId Id="394" Count="0" />
+      <LineId Id="504" Count="0" />
+      <LineId Id="279" Count="16" />
+      <LineId Id="214" Count="0" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

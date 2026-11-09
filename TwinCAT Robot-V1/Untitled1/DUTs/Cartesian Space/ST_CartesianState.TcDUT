@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CartesianState" Id="{30eb5419-55ae-472d-8ed3-be5b7fd0d153}">
+    <Declaration><![CDATA[TYPE ST_CartesianState :
+STRUCT
+	Position : ST_CartesianPose;     // Contains X, Y, Theta
+    Velocity : ST_CartesianVelocity; // Contains Vx, Vy, Vtheta
+	Force    : ST_CartesianForces;    // Contains Fx, Fy, Mtheta
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

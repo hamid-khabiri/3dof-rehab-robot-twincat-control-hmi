@@ -1,0 +1,159 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_HMI" Id="{5b918e4f-011a-44d8-9378-686b0a399772}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	
+
+
+	
+	bLaunchGameSpongCmd : BOOL := FALSE;
+	bLaunchGamePeelerCmd : BOOL := FALSE;
+	bLaunchGameGoldMiner : BOOL := FALSE;
+	bLaunchGameBalloonAssesment : BOOL := FALSE;
+	bLaunchGameSnowWiper : BOOL := FALSE;
+	bLaunchGameSorter : BOOL := FALSE;
+	bLaunchGameFlower : BOOL := FALSE;
+	bLaunchGameCrazyCar : BOOL := FALSE;
+	
+	
+	
+	
+	
+	// MicroSwitch Check
+	CheckMicroswitchLinearMin : BOOL := FALSE;
+	CheckMicroswitchLinearMax : BOOL := FALSE;
+	CheckMicroswitchRotationLeft : BOOL := FALSE;
+	CheckMicroswitchRotationRight : BOOL := FALSE;
+	CheckMicroswitchWristLeft : BOOL := FALSE;
+	CheckMicroswitchWristRight : BOOL := FALSE;
+	
+	HardwareLimitisActived : BOOL := FALSE;
+	
+	
+			// HMIHardwareMicroSwitch Check for activation
+	
+	HwCheckMicroswitchLinearMin : BOOL := FALSE;
+	HwCheckMicroswitchLinearMax : BOOL := FALSE;
+	HwCheckMicroswitchRotationLeft : BOOL := FALSE;
+	HwCheckMicroswitchRotationRight : BOOL := FALSE;
+	HwCheckMicroswitchWristLeft : BOOL := FALSE;
+	HwCheckMicroswitchWristRight : BOOL := FALSE;
+	
+	// TurningonPageinHMI when hardwarelimit Activated
+	
+	
+	ContinueToHoming : BOOL := FALSE;
+	StartTherapy: BOOL;
+	StartRobot_HMI : BOOL;
+	StartHomingDisable_HMI : BOOL := TRUE;
+	ContinueToSensorCalibrationDisable_HMI : BOOL := FALSE;
+	Homingprogress : UINT;
+	StartCalibrationButton : BOOL := FALSE;
+	UserSecuringButton_HMI : BOOL := FALSE;
+	Fx_HMI: LREAL;
+	Fy_HMI: LREAL;
+	Mz_HMI: LREAL;
+	SecuringPage : INT :=1 ;
+	
+	
+	// User Securing
+	check1 : BOOL := FALSE;
+	check2 : BOOL := FALSE;
+	check3 : BOOL := FALSE;
+	check4 : BOOL := FALSE;
+	check5 : BOOL := FALSE;
+	check6 : BOOL := FALSE;
+	ContinueTOWorkspaceLimits : BOOL := FALSE;
+	MainPageButtonEnableDisable : BOOL :=FALSE;
+	EmergencyStopIsOnHardware : BOOL := FALSE;
+	EmergencyStopIsOnSoftware : BOOL := FALSE;
+	HomingError : BOOL := FALSE;
+	CurrentTherapyConfig : ST_TherapyConfig;
+	Virtuallwall : BOOL;
+	VirtualWallContact : BOOL;
+	EndeffectorPositionPixcelUnit_X : INT;
+	EndeffectorPositionPixcelUnit_Y : INT;
+	EndeffectorPositionPixcelUnit_Theta : LREAL;
+	
+PolygonPoints : STRING(255);
+
+  // Variable related to Workspace
+
+  // Hardware Limit Switches
+   
+
+    bRotationLeftLimit        : BOOL;
+    bRotationRightLimit       : BOOL;
+
+    bLinearMaxLimit           : BOOL;
+    bLinearMinLimit           : BOOL;
+
+    bWristRightLimit          : BOOL;
+    bWristLeftLimit           : BOOL;
+	
+	
+	EableVirtuallWall_Planar : BOOL;
+	EnableWristWall : BOOL;
+	// PLanar Button
+
+	TopPlanarWall_But : BOOL;
+	BottomPlanarWall_But : BOOL;
+	RightPlanarWall_But: BOOL;
+	LeftPlanarWall_But : BOOL;
+	
+	SETPlanarWall_But : BOOL;
+	
+	RightWristWall_But : BOOL;
+	LeftWristWall_But : BOOL;
+	SETWristWall_But : BOOL;
+	
+
+
+
+
+
+
+
+// Therapy Configuration
+	
+	    // Global safety limits
+    MaxForce : LREAL := 20.0;
+    MaxVelocity : LREAL := 50.0;
+
+
+    // Therapy mode
+    TherapyMode : INT := 0;
+
+    bActiveMode : BOOL := FALSE;
+    bPassiveMode : BOOL := FALSE;
+    bAssistiveMode : BOOL := FALSE;
+    bResistiveMode : BOOL := FALSE;
+    bGameBasedMode : BOOL := TRUE;
+
+
+    // Dynamics compensation
+    bFrictionCompensation : BOOL := FALSE;
+    bInertiaCompensation : BOOL := FALSE;
+
+
+    // Control type
+    ControlType : INT := 0;
+
+    bImpedanceControl : BOOL := TRUE;
+    bAdmittanceControl : BOOL := FALSE;
+
+
+    // Control parameters
+    Stiffness : LREAL := 20.5;
+    Damping : LREAL := 0.0;
+    Mass : LREAL := 0.0;
+
+
+    // Start therapy
+    bStartTherapy : BOOL := FALSE;
+	
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

@@ -1,0 +1,987 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_HMI_TherapyConfiguration" Id="{2d1b0d38-4851-42d1-bd05-e1fc718dcfd2}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_HMI_TherapyConfiguration
+VAR_INPUT
+	CartesianDataTransedFromJointSpace : ST_CartesianState;
+END_VAR
+VAR_OUTPUT
+	 WallSetPointXandY : ARRAY[1..4, 1..2] OF LREAL := [
+    0.0, 370.408,        // Top wall
+    0.0, -12.245,        // Bottom wall
+    168.367, 370.408,    // Right wall
+    -168.367, 370.408    // Left wall
+];
+END_VAR
+VAR
+sPolygonPoints: STRING(255);
+ActiveWall: INT;
+EndEffectorPixcelPosY : INT;
+EndEffectorPixcelPosX : INT;
+
+//
+// ActiveWall: INT:=1;
+	X_A : INT ;
+	Y_AB : INT ;
+	X_B : INT ;
+	
+	X_C : INT ;
+	Y_CD : INT ;
+	X_D: INT ;
+	nLength: INT;
+	
+	X_ConstantoFRotationalCenterPixcel : INT := 260;
+Y_ConstantoFRotationalCenterPixcel : INT := -60;
+
+bPolygonInitialized: BOOL;
+(* Set button edge *)
+bSetWall : BOOL;
+bSetWallOld : BOOL;
+bSetWallRisingEdge : BOOL;
+
+//
+fbSetWallTrig : R_TRIG;
+
+    fbTopWallTrig : R_TRIG;
+    fbBottomWallTrig : R_TRIG;
+    fbRightWallTrig : R_TRIG;
+    fbLeftWallTrig : R_TRIG;
+
+// WRIST VARIABLE
+// =========================================================
+// WRIST PURPLE LINE
+// =========================================================
+
+fWristLineX : LREAL;                 // X of moving endpoint
+fWristLineY : LREAL;                 // Y of moving endpoint
+
+fWristCenterX : LREAL := 100.0;      // Fixed center X [pixel]
+fWristCenterY : LREAL := 100.0;      // Fixed center Y [pixel]
+fWristRadius  : LREAL := 100.0;      // Purple line length [pixel]
+
+fAngleRad : LREAL;                   // Wrist angle [rad]
+
+
+// =========================================================
+// WRIST VIRTUAL WALL
+// =========================================================
+
+// 0 = No wall active
+// 1 = Right wall active
+// 2 = Left wall active
+WristWall : INT := 0;
+
+// Polygon:
+// [1,*] = A
+// [2,*] = B
+// [3,*] = C
+aWristPolygon : ARRAY[1..3, 1..2] OF LREAL;
+
+// Polygon string for HMI binding
+sWristPolygonPoints : STRING(255);
+
+
+// =========================================================
+// SET / SAVE
+// =========================================================
+
+bWristPolygonInitialized : BOOL := FALSE;
+
+bWristSetOld : BOOL := FALSE;
+bWristSetRisingEdge : BOOL;
+
+bWristSetEnable : BOOL;
+bWristWallInvalid : BOOL;
+
+// 
+fbRightWristWallTrig : R_TRIG;
+    fbLeftWristWallTrig  : R_TRIG;
+    fbWristSetTrig       : R_TRIG;
+
+   // bWristSetRisingEdge  : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[GVL_HMI.CurrentTherapyConfig.ControllerType := E_ControllerType.ControlNone;
+GVL_HMI.CurrentTherapyConfig.GlobalVelocityLimit := 100;
+
+IF GVL_HMI.EableVirtuallWall_Planar THEN
+	
+PlanarHMIWall();
+
+END_IF
+
+
+
+WristHMIWall();
+ButtonStatus();
+
+nLength := LEN(sPolygonPoints);
+]]></ST>
+    </Implementation>
+    <Method Name="ButtonStatus" Id="{4451bc53-11ef-4d93-ba01-e2a8948eb473}">
+      <Declaration><![CDATA[METHOD ButtonStatus 
+VAR
+  
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF NOT GVL_HMI.bActiveMode
+   AND NOT GVL_HMI.bPassiveMode
+   AND NOT GVL_HMI.bAssistiveMode
+   AND NOT GVL_HMI.bResistiveMode
+   AND NOT GVL_HMI.bGameBasedMode THEN
+
+    // Default mode
+    GVL_HMI.bGameBasedMode := TRUE;
+
+END_IF;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="PlanarHMIWall" Id="{9ba81da2-6263-4063-8734-67a19a853d15}">
+      <Declaration><![CDATA[METHOD PlanarHMIWall : BOOL
+VAR_INPUT
+END_VAR
+
+VAR
+	
+	
+
+
+LineRight_Y : LREAL;
+LineRight_X : LREAL;
+EndEffectorLocalX : INT;
+EndEffectorLocalY : INT;
+	
+	LineLeft_Y: LREAL;
+	LineLeft_X: LREAL;
+	
+	aPolygon : ARRAY[1..4, 1..2] OF INT;
+	i: INT;
+	
+	DeltaY: INT;
+END_VAR
+
+
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[(************************************************************
+    WALL SELECTION
+    Select a new wall ONLY when no wall is currently active
+*************************************************************)
+
+fbTopWallTrig(
+    CLK := GVL_HMI.TopPlanarWall_But
+);
+
+fbBottomWallTrig(
+    CLK := GVL_HMI.BottomPlanarWall_But
+);
+
+fbRightWallTrig(
+    CLK := GVL_HMI.RightPlanarWall_But
+);
+
+fbLeftWallTrig(
+    CLK := GVL_HMI.LeftPlanarWall_But
+);
+
+
+IF ActiveWall = 0 THEN
+
+    IF fbTopWallTrig.Q THEN
+
+        ActiveWall := 1;
+
+    ELSIF fbBottomWallTrig.Q THEN
+
+        ActiveWall := 2;
+
+    ELSIF fbRightWallTrig.Q THEN
+
+        ActiveWall := 3;
+
+    ELSIF fbLeftWallTrig.Q THEN
+
+        ActiveWall := 4;
+
+    END_IF;
+
+END_IF;
+
+
+(************************************************************
+    INITIALIZE POLYGON ONLY ONCE
+*************************************************************)
+
+IF NOT bPolygonInitialized THEN
+
+    X_A := 150;
+    Y_AB := 10;
+    X_B := 370;
+
+    X_C := 765;
+    Y_CD := 260;
+    X_D := -245;
+
+    bPolygonInitialized := TRUE;
+
+END_IF;
+
+
+(************************************************************
+    GET END-EFFECTOR POSITION
+*************************************************************)
+
+EndEffectorPixcelPosX :=
+    GVL_HMI.EndeffectorPositionPixcelUnit_X;
+
+EndEffectorPixcelPosY :=
+    GVL_HMI.EndeffectorPositionPixcelUnit_Y;
+
+
+(************************************************************
+    CONVERT TO POLYGON COORDINATE SYSTEM
+*************************************************************)
+
+EndEffectorLocalX :=
+    EndEffectorPixcelPosX - 233;
+
+EndEffectorLocalY :=
+    EndEffectorPixcelPosY - 443 + 15;
+
+
+(************************************************************
+    SET BUTTON RISING EDGE
+*************************************************************)
+
+fbSetWallTrig(
+    CLK := GVL_HMI.SETPlanarWall_But
+);
+
+bSetWallRisingEdge := fbSetWallTrig.Q;
+
+
+(************************************************************
+    MODIFY ACTIVE WALL ONLY WHILE SET IS NOT PRESSED
+*************************************************************)
+
+IF ActiveWall <> 0 THEN
+
+    CASE ActiveWall OF
+
+
+        (********************************************************
+            1: TOP WALL AB
+        *********************************************************)
+
+        1:
+
+             Y_AB := EndEffectorLocalY;
+
+
+    (* Point A:
+       line AD passes through rotation center R *)
+    X_A := LREAL_TO_INT(
+
+        TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+        +
+
+        (
+            TO_LREAL(150)
+            -
+            TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+        )
+
+        *
+
+        (
+            TO_LREAL(Y_AB)
+            -
+            TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+        )
+
+        /
+
+        (
+            TO_LREAL(10)
+            -
+            TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+        )
+
+    );
+
+
+    (* Point B:
+       line BC passes through rotation center R *)
+    X_B := LREAL_TO_INT(
+
+        TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+        +
+
+        (
+            TO_LREAL(370)
+            -
+            TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+        )
+
+        *
+
+        (
+            TO_LREAL(Y_AB)
+            -
+            TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+        )
+
+        /
+
+        (
+            TO_LREAL(10)
+            -
+            TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+        )
+
+    );
+
+
+        (********************************************************
+            2: BOTTOM WALL DC
+        *********************************************************)
+
+        2:
+
+            DeltaY :=
+                EndEffectorLocalY - Y_CD;
+
+            X_D := REAL_TO_INT(
+                INT_TO_REAL(X_D)
+                +
+                INT_TO_REAL(DeltaY)
+                * (-395.0 / 250.0)
+            );
+
+            X_C := REAL_TO_INT(
+                INT_TO_REAL(X_C)
+                +
+                INT_TO_REAL(DeltaY)
+                * (395.0 / 250.0)
+            );
+
+            Y_CD :=
+                EndEffectorLocalY;
+
+
+        (********************************************************
+            3: RIGHT WALL BC
+        *********************************************************)
+
+        3:
+
+            X_B := LREAL_TO_INT(
+
+                TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+                +
+
+                (
+                    TO_LREAL(EndEffectorLocalX)
+                    -
+                    TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+                )
+
+                *
+
+                (
+                    TO_LREAL(Y_AB)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+                /
+
+                (
+                    TO_LREAL(EndEffectorLocalY)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+            );
+
+
+            X_C := LREAL_TO_INT(
+
+                TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+                +
+
+                (
+                    TO_LREAL(EndEffectorLocalX)
+                    -
+                    TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+                )
+
+                *
+
+                (
+                    TO_LREAL(Y_CD)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+                /
+
+                (
+                    TO_LREAL(EndEffectorLocalY)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+            );
+
+
+        (********************************************************
+            4: LEFT WALL AD
+        *********************************************************)
+
+        4:
+
+            X_A := LREAL_TO_INT(
+
+                TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+                +
+
+                (
+                    TO_LREAL(EndEffectorLocalX)
+                    -
+                    TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+                )
+
+                *
+
+                (
+                    TO_LREAL(Y_AB)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+                /
+
+                (
+                    TO_LREAL(EndEffectorLocalY)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+            );
+
+
+            X_D := LREAL_TO_INT(
+
+                TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+
+                +
+
+                (
+                    TO_LREAL(EndEffectorLocalX)
+                    -
+                    TO_LREAL(X_ConstantoFRotationalCenterPixcel)
+                )
+
+                *
+
+                (
+                    TO_LREAL(Y_CD)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+                /
+
+                (
+                    TO_LREAL(EndEffectorLocalY)
+                    -
+                    TO_LREAL(Y_ConstantoFRotationalCenterPixcel)
+                )
+
+            );
+
+    END_CASE;
+
+END_IF;
+
+
+(************************************************************
+    WHEN SET IS PRESSED, FIX THE WALL
+*************************************************************)
+IF bSetWallRisingEdge THEN
+
+    CASE ActiveWall OF
+
+        // TOP WALL AB
+        1:
+            WallSetPointXandY[1,1] := 0.0;
+			WallSetPointXandY[1,2] := CartesianDataTransedFromJointSpace.Position.Y;
+                
+
+
+        // BOTTOM WALL DC
+        2:
+            WallSetPointXandY[2,1] := 0.0;
+			WallSetPointXandY[2,2] := CartesianDataTransedFromJointSpace.Position.Y;
+
+
+        // RIGHT WALL BC
+        3:
+            WallSetPointXandY[3,1] :=CartesianDataTransedFromJointSpace.Position.X;
+			WallSetPointXandY[3,2] := CartesianDataTransedFromJointSpace.Position.Y;
+
+
+        // LEFT WALL AD
+        4:
+            WallSetPointXandY[4,1] :=CartesianDataTransedFromJointSpace.Position.X;
+			WallSetPointXandY[4,2] := CartesianDataTransedFromJointSpace.Position.Y;
+
+    END_CASE;
+
+
+    // No wall is currently being edited
+    ActiveWall := 0;
+
+    // Reset SET button
+    GVL_HMI.SETPlanarWall_But := FALSE;
+
+    // Deselect all wall buttons
+    GVL_HMI.TopPlanarWall_But := FALSE;
+    GVL_HMI.BottomPlanarWall_But := FALSE;
+    GVL_HMI.RightPlanarWall_But := FALSE;
+    GVL_HMI.LeftPlanarWall_But := FALSE;
+
+END_IF;
+
+
+(************************************************************
+    UPDATE POLYGON ARRAY
+*************************************************************)
+
+aPolygon[1, 1] := X_A;
+aPolygon[1, 2] := Y_AB;
+
+aPolygon[2, 1] := X_B;
+aPolygon[2, 2] := Y_AB;
+
+aPolygon[3, 1] := X_C;
+aPolygon[3, 2] := Y_CD;
+
+aPolygon[4, 1] := X_D;
+aPolygon[4, 2] := Y_CD;
+
+
+(************************************************************
+    CREATE POLYGON STRING
+*************************************************************)
+
+sPolygonPoints := '';
+
+FOR i := 1 TO 4 DO
+
+    sPolygonPoints := CONCAT(
+        sPolygonPoints,
+        INT_TO_STRING(aPolygon[i, 1])
+    );
+
+    sPolygonPoints := CONCAT(
+        sPolygonPoints,
+        ','
+    );
+
+    sPolygonPoints := CONCAT(
+        sPolygonPoints,
+        INT_TO_STRING(aPolygon[i, 2])
+    );
+
+    IF i < 4 THEN
+
+        sPolygonPoints := CONCAT(
+            sPolygonPoints,
+            ' '
+        );
+
+    END_IF;
+
+END_FOR;
+
+PlanarHMIWall := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="WristHMIWall" Id="{c20772ee-e01b-435c-8dbf-39a7ae90353a}">
+      <Declaration><![CDATA[METHOD WristHMIWall : BOOL
+VAR
+ 
+i : INT;
+	bWristSetBlocked: BOOL := FALSE;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+(************************************************************
+    WRIST WALL BUTTON RISING EDGE DETECTION
+*************************************************************)
+
+fbRightWristWallTrig(
+    CLK := GVL_HMI.RightWristWall_But
+);
+
+fbLeftWristWallTrig(
+    CLK := GVL_HMI.LeftWristWall_But
+);
+
+fbWristSetTrig(
+    CLK := GVL_HMI.SETWristWall_But
+);
+
+bWristSetRisingEdge := fbWristSetTrig.Q;
+
+
+(************************************************************
+    INITIALIZE WRIST POLYGON ONLY ONCE
+*************************************************************)
+
+IF NOT bWristPolygonInitialized THEN
+
+    // Point A - predefined
+    aWristPolygon[1, 1] := 100.0;
+    aWristPolygon[1, 2] := 0.0;
+
+    // Point B - predefined
+    aWristPolygon[2, 1] := 100.0;
+    aWristPolygon[2, 2] := 0.0;
+
+    // Point C - constant
+    aWristPolygon[3, 1] := 100.0;
+    aWristPolygon[3, 2] := 100.0;
+
+    bWristPolygonInitialized := TRUE;
+
+END_IF;
+
+
+(************************************************************
+    SELECT WRIST WALL
+
+    Select a new wall ONLY when no wall is active.
+
+    WristWall:
+        0 = No wall selected
+        1 = Right wall selected
+        2 = Left wall selected
+*************************************************************)
+
+IF WristWall = 0 THEN
+
+    IF fbRightWristWallTrig.Q THEN
+
+        WristWall := 1;
+
+    ELSIF fbLeftWristWallTrig.Q THEN
+
+        WristWall := 2;
+
+    END_IF;
+
+END_IF;
+
+
+(************************************************************
+    CONVERT ACTUAL WRIST ANGLE
+    FROM DEGREES TO RADIANS
+*************************************************************)
+
+fAngleRad :=
+    GVL_HMI.EndeffectorPositionPixcelUnit_Theta
+    * 3.14159265359 / 180.0;
+
+
+(************************************************************
+    CALCULATE MOVING ENDPOINT OF PURPLE LINE
+
+    IMPORTANT:
+    This calculation runs every PLC cycle.
+
+    The purple line follows the wrist angle
+    independently of the green polygon.
+*************************************************************)
+
+fWristLineX :=
+    fWristCenterX
+    + fWristRadius * SIN(fAngleRad);
+
+fWristLineY :=
+    fWristCenterY
+    - fWristRadius * COS(fAngleRad);
+
+
+(************************************************************
+    WRIST VIRTUAL WALL
+
+    WristWall = 0:
+        Keep polygon points A and B fixed.
+
+    WristWall = 1:
+        Point A follows the purple line.
+
+    WristWall = 2:
+        Point B follows the purple line.
+*************************************************************)
+
+CASE WristWall OF
+
+    (********************************************************
+        0: NO WALL ACTIVE
+
+        Do not update polygon points A or B.
+
+        This keeps the green area fixed after SET.
+    *********************************************************)
+
+    0:
+
+        bWristSetEnable := FALSE;
+        bWristWallInvalid := FALSE;
+
+
+    (********************************************************
+        1: RIGHT WALL ACTIVE
+
+        Point A follows the purple line.
+    *********************************************************)
+
+    1:
+
+        // Update Point A
+        aWristPolygon[1, 1] := fWristLineX;
+        aWristPolygon[1, 2] := fWristLineY;
+
+        // Check wall direction
+        IF aWristPolygon[1, 1] <
+           aWristPolygon[2, 1] THEN
+
+            bWristWallInvalid := FALSE;
+            bWristSetEnable := TRUE;
+
+        ELSE
+
+            bWristWallInvalid := TRUE;
+            bWristSetEnable := FALSE;
+
+        END_IF;
+
+
+    (********************************************************
+        2: LEFT WALL ACTIVE
+
+        Point B follows the purple line.
+    *********************************************************)
+
+    2:
+
+        // Update Point B
+        aWristPolygon[2, 1] := fWristLineX;
+        aWristPolygon[2, 2] := fWristLineY;
+
+        // Check wall direction
+        IF aWristPolygon[1, 1] <
+           aWristPolygon[2, 1] THEN
+
+            bWristWallInvalid := FALSE;
+            bWristSetEnable := TRUE;
+
+        ELSE
+
+            bWristWallInvalid := TRUE;
+            bWristSetEnable := FALSE;
+
+        END_IF;
+
+END_CASE;
+
+
+(************************************************************
+    CHECK WHETHER SET IS BLOCKED
+
+    TRUE means:
+        - SET was pressed
+        - A wall is selected
+        - The selected position is invalid
+*************************************************************)
+
+bWristSetBlocked :=
+    bWristSetRisingEdge
+    AND (WristWall <> 0)
+    AND NOT bWristSetEnable;
+
+
+(************************************************************
+    WHEN SET IS PRESSED, FIX THE WRIST WALL
+
+    Similar to planar virtual wall:
+
+    1. Keep the current polygon coordinates.
+    2. Stop updating the selected boundary.
+    3. Reset the wall selection.
+    4. Continue updating the purple line independently.
+*************************************************************)
+
+IF bWristSetRisingEdge THEN
+
+    IF (WristWall <> 0)
+       AND bWristSetEnable THEN
+
+        // Stop editing the current wall
+        WristWall := 0;
+
+        // Disable SET until another wall is selected
+        bWristSetEnable := FALSE;
+
+        // Clear invalid indication
+        bWristWallInvalid := FALSE;
+
+        // Deselect Right and Left buttons
+        GVL_HMI.RightWristWall_But := FALSE;
+        GVL_HMI.LeftWristWall_But := FALSE;
+
+    END_IF;
+
+    // Reset SET command
+    GVL_HMI.SETWristWall_But := FALSE;
+
+END_IF;
+
+
+(************************************************************
+    POINT C IS ALWAYS CONSTANT
+
+    Point C represents the wrist rotation center.
+*************************************************************)
+
+aWristPolygon[3, 1] := fWristCenterX;
+aWristPolygon[3, 2] := fWristCenterY;
+
+
+(************************************************************
+    CREATE POLYGON STRING FOR TWINCAT HMI
+
+    The green polygon uses the saved coordinates
+    of Points A and B.
+
+    It does NOT directly use fWristLineX or
+    fWristLineY.
+
+    Therefore, when WristWall = 0,
+    the green polygon remains fixed.
+*************************************************************)
+
+sWristPolygonPoints := '';
+
+FOR i := 1 TO 3 DO
+
+    // Add polygon X coordinate
+    sWristPolygonPoints := CONCAT(
+        sWristPolygonPoints,
+        LREAL_TO_STRING(aWristPolygon[i, 1])
+    );
+
+    sWristPolygonPoints := CONCAT(
+        sWristPolygonPoints,
+        ','
+    );
+
+    // Add polygon Y coordinate
+    sWristPolygonPoints := CONCAT(
+        sWristPolygonPoints,
+        LREAL_TO_STRING(aWristPolygon[i, 2])
+    );
+
+    // Add constant point after Point A
+    IF i = 1 THEN
+
+        sWristPolygonPoints := CONCAT(
+            sWristPolygonPoints,
+            ' 100.0,-20.0'
+        );
+
+    END_IF;
+
+    // Add space between polygon points
+    IF i < 3 THEN
+
+        sWristPolygonPoints := CONCAT(
+            sWristPolygonPoints,
+            ' '
+        );
+
+    END_IF;
+
+END_FOR;
+
+
+(************************************************************
+    ENABLE / UPDATE HMI POLYGON
+*************************************************************)
+
+WristHMIWall := TRUE;
+]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_HMI_TherapyConfiguration">
+      <LineId Id="9" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="159" Count="0" />
+      <LineId Id="156" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="162" Count="1" />
+      <LineId Id="161" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="157" Count="1" />
+      <LineId Id="76" Count="0" />
+      <LineId Id="155" Count="0" />
+      <LineId Id="154" Count="0" />
+      <LineId Id="34" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_HMI_TherapyConfiguration.ButtonStatus">
+      <LineId Id="138" Count="8" />
+      <LineId Id="65" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_HMI_TherapyConfiguration.PlanarHMIWall">
+      <LineId Id="1722" Count="41" />
+      <LineId Id="1631" Count="0" />
+      <LineId Id="1628" Count="1" />
+      <LineId Id="1220" Count="44" />
+      <LineId Id="1704" Count="3" />
+      <LineId Id="1269" Count="6" />
+      <LineId Id="1669" Count="1" />
+      <LineId Id="1278" Count="8" />
+      <LineId Id="1537" Count="65" />
+      <LineId Id="1305" Count="172" />
+      <LineId Id="1788" Count="6" />
+      <LineId Id="1836" Count="0" />
+      <LineId Id="1795" Count="5" />
+      <LineId Id="1837" Count="0" />
+      <LineId Id="1802" Count="3" />
+      <LineId Id="1810" Count="0" />
+      <LineId Id="1838" Count="0" />
+      <LineId Id="1811" Count="3" />
+      <LineId Id="1819" Count="0" />
+      <LineId Id="1839" Count="0" />
+      <LineId Id="1820" Count="15" />
+      <LineId Id="1483" Count="53" />
+      <LineId Id="138" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_HMI_TherapyConfiguration.WristHMIWall">
+      <LineId Id="738" Count="306" />
+      <LineId Id="24" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

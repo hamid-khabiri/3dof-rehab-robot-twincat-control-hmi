@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_RehabMode" Id="{1152cd5e-dc14-4441-8bf7-1501ce4a2c53}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_RehabMode :
+(
+	ModeIdle              := 0, // Safety default: system is ready but therapy is not active
+    ModePassive           := 1, // Robot moves a completely relaxed patient rigidly along a path
+    ModeActiveFree        := 2, // Robot is totally transparent; patient moves freely without resistance
+    ModeActiveAssistive   := 3, // Robot provides assistive forces to help the patient reach the target
+    ModeActiveResistive   := 4, // Robot pushes against the patient to build muscle strength
+    ModePerturbation      := 5, // Robot applies sudden, unexpected forces to train patient reflexes
+    ModeAssessment        := 6  // Robot measures patient capability passively without providing assistance
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

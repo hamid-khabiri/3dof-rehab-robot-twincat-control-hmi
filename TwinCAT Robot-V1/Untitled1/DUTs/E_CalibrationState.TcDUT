@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_CalibrationState" Id="{cba04b3e-be32-410c-9446-e3dd38652e9d}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_CalibrationState :
+(
+	INIT,
+    SET_FILTER,
+    START,
+    WaitingforCalibrationButton,
+    ZEROING,
+    RUNNING
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

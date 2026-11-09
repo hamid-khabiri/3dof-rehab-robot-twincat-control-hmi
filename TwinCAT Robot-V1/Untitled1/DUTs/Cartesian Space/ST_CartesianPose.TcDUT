@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CartesianPose" Id="{0b82d9c1-3c6f-4b73-a509-c349b7df288d}">
+    <Declaration><![CDATA[TYPE ST_CartesianPose :
+STRUCT
+	X     : LREAL; // X position (mm)
+    Y     : LREAL; // Y position (mm)
+    Theta : LREAL; // Wrist angle (deg / rad)
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

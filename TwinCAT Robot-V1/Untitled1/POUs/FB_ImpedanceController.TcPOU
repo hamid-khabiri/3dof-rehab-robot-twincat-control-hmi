@@ -1,0 +1,694 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_ImpedanceController" Id="{c2d9aecc-3585-488b-8100-ca9d06a714eb}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_ImpedanceController
+VAR_INPUT
+ TherapyMode : E_RehabMode;
+ Stiffness   : LREAL;              // Virtual spring K
+ Damping     : LREAL;              // Virtual friction D
+  
+END_VAR
+
+
+
+VAR_OUTPUT
+    bBusy         : BOOL;
+    bError        : BOOL;
+    bDone         : BOOL;
+//	TherapyTorques : ST_JointTorques;
+END_VAR
+
+VAR
+	 
+    stPointA      : ARRAY [1..3] OF LREAL  ; 
+    stPointB      : ARRAY [1..3] OF LREAL  ;
+    stPointC      : ARRAY [1..3] OF LREAL  ;
+	
+    // --- Feedback from Robot (Inputs) ---
+    ActX          : LREAL; 
+    ActY          : LREAL; 
+    ActTheta      : LREAL;
+	ActR          : LREAL; // mm
+	ActBeta		  : LREAL;
+    
+
+
+    // --- State Machine Logic ---
+    iState           : INT := 0;      // Main Step Counter
+    iCurrentSegment  : INT := 0;      // 5=Approach, 10=A->B, 20=B->C, 30=C->A
+    bAtPointA        : BOOL := FALSE;
+    bSegmentDone     : BOOL;
+    bWaitEnable      : BOOL;
+    
+    // --- Timers & Sub-FBs ---
+    fbWaitTimer      : TON;           // Timer for resting at corners
+    fbKinematic      : FB_RobotKinematics;  // Internal instance to update kinematics
+    
+    // --- Motion Profile Variables (Trapezoid Generator) ---
+    lrS_T            : LREAL;         // Current Distance along path (0 to L)
+    lrS_dot          : LREAL;         // Current Velocity (Speed of the "Rabbit")
+    lrL_Target       : LREAL;         // Total Length of the current segment
+
+    // --- Geometric Calculations (Approach Phase) ---
+    lrApproachStartX : LREAL;
+    lrApproachStartY : LREAL;
+    lrApproachStartTheta : LREAL;
+    lrDX_App, lrDY_App, lrDTh_App, lrL_App : LREAL;
+
+    // --- Geometric Calculations (Triangle Phase) ---
+    // Line 1 (A->B)
+    lrDX1, lrDY1, lrDTh1, lrL1 : LREAL;
+    // Line 2 (B->C)
+    lrDX2, lrDY2, lrDTh2, lrL2 : LREAL;
+    // Line 3 (C->A)
+    lrDX3, lrDY3, lrDTh3, lrL3 : LREAL;
+
+    // --- Impedance Control Targets ---
+    SetAppX             : LREAL; // The "Virtual Rabbit" X position
+    SetAppY             : LREAL; // The "Virtual Rabbit" Y position
+    SetAppTheta         : LREAL; // The "Virtual Rabbit" Theta position
+    
+    // --- Calculation Results ---
+    CalcForces       : ARRAY [1..3] OF LREAL; // [Fx, Fy, Mz] calculated by Impedance
+    CalcTorques      : ARRAY [1..3] OF LREAL; // [Tau1, Tau2, Tau3] calculated by Jacobian
+
+    // --- TwinCAT Motion Control Blocks ---
+    // Note: I renamed these to 'fbTorqueAxis1' to match the method code we wrote previously
+    fbTorqueAxis1    : MC_TorqueControl;
+    fbTorqueAxis2    : MC_TorqueControl;
+    fbTorqueAxis3    : MC_TorqueControl;
+
+    // --- Safety Parameters ---
+    MaxSpeedLimit    : LREAL := 70.0; // Safety velocity limit (mm/s)
+    MaxTorqueLimit   : LREAL := 50.0;  // Safety torque limit (Nm)
+	
+	// 
+	lrVmax: LREAL := 10.0; // mm/s
+	lrAcc : LREAL := 100.0 ;// mm/ s^2
+	
+	SetVelAppX      : LREAL;
+    SetVelAppY      : LREAL;
+    SetVelAppTheta  : LREAL;
+	
+	// INTERNAL setpoints calculated each cycle
+    stCurrentSet  : ARRAY[1..3] OF LREAL; // Target [X, Y, Theta]
+	 lrVx_FF, lrVy_FF, lrVTh_FF : LREAL;
+	  Ex, Ey, ETheta    : LREAL; // Position Errors
+	  lrTorqueSetpoint_Pct : ARRAY[1..3] OF LREAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(* This Function block can be used for difference rehabilitation mode
+ 1- passive motion: actuators create No torque and patient can move the robot
+ 2- Passive motion + Compensation(solving dynamic of robot)
+ 3- Resistive or Assistive force
+*)
+
+stPointA := GVL_TargetPoints.Target_A;
+stPointB := GVL_TargetPoints.Target_B;
+stPointC := GVL_TargetPoints.Target_C;
+
+
+// =========================================================
+// 1. KINEMATICS UPDATE (Always Run First)
+// =========================================================
+// We need ActX/ActY to calculate the spring force error
+(*  JUST FOR TEST ELIMINATED
+fbKinematic(
+	
+    q1 := GVL_RobotData.Q1_Actual, 
+    q2 := GVL_RobotData.Q2_Actual, 
+    q3 := GVL_RobotData.Q3_Actual, 
+    X_Dir => ActX, 
+    Y_Dir => ActY, 
+    Theta => ActTheta,
+    R_Dir => ActR,
+	Beta => ActBeta    
+);
+*)
+
+// 
+
+// Update Timer
+fbWaitTimer(IN := bWaitEnable, PT := T#120S);
+
+// =========================================================
+// 2. STATE MACHINE
+// =========================================================
+CASE iState OF
+
+    // -----------------------------------------------------
+    // STATE 0: INITIALIZATION (Math Setup)
+    // -----------------------------------------------------
+    0: 
+        // 1. Capture Start Position for Approach
+        lrApproachStartX     := ActX;
+        lrApproachStartY     := ActY;
+        lrApproachStartTheta := ActTheta;
+
+        // 2. Calculate Distance to Point A (Approach Vector)
+        lrDX_App  := stPointA[1] - lrApproachStartX;
+        lrDY_App  := stPointA[2] - lrApproachStartY;
+        lrDTh_App := stPointA[3] - lrApproachStartTheta;
+        lrL_App   := MAX(0.001, SQRT(lrDX_App*lrDX_App + lrDY_App*lrDY_App));
+
+        // 3. Calculate Triangle Vectors (A->B, B->C, C->A)
+        // --- Line 1: A to B ---
+        lrDX1  := stPointB[1] - stPointA[1];
+        lrDY1  := stPointB[2] - stPointA[2];
+        lrDTh1 := stPointB[3] - stPointA[3];
+        lrL1   := MAX(0.001, SQRT(lrDX1*lrDX1 + lrDY1*lrDY1));
+        
+        // --- Line 2: B to C ---
+        lrDX2  := stPointC[1] - stPointB[1];
+        lrDY2  := stPointC[2] - stPointB[2];
+        lrDTh2 := stPointC[3] - stPointB[3];
+        lrL2   := MAX(0.001, SQRT(lrDX2*lrDX2 + lrDY2*lrDY2));
+        
+        // --- Line 3: C to A ---
+        lrDX3  := stPointA[1] - stPointC[1];
+        lrDY3  := stPointA[2] - stPointC[2];
+        lrDTh3 := stPointA[3] - stPointC[3];
+        lrL3   := MAX(0.001, SQRT(lrDX3*lrDX3 + lrDY3*lrDY3));
+
+        // Reset Motion
+        lrS_T   := 0;
+        lrS_dot := 0;
+        
+        iCurrentSegment := 5; // Start with Approach
+        GVL_MessageStaus.MessageStaus := 'Assistive: Guiding to Start Point A.';
+        iState  := 5;
+
+
+    // -----------------------------------------------------
+    // STATE 5: APPROACH (Guiding Patient to Point A)
+    // -----------------------------------------------------
+    5:
+        // A. Move the "Virtual Rabbit" along the path to A
+        bAtPointA := UpdateTrapezoid(lrL_total := lrL_App);
+
+        // B. Manually Calculate Setpoint (Interpolation)
+        SetAppX     := lrApproachStartX + (lrDX_App / lrL_App) * lrS_T;
+        SetAppY     := lrApproachStartY + (lrDY_App / lrL_App) * lrS_T;
+        SetAppTheta := lrApproachStartTheta + (lrDTh_App / lrL_App) * lrS_T;
+		
+		SetVelAppX     := (lrDX_App / lrL_App) * lrS_dot;
+        SetVelAppY     := (lrDY_App / lrL_App) * lrS_dot;
+        SetVelAppTheta := (lrDTh_App / lrL_App) * lrS_dot;
+
+        // C. Calculate Assistive Force (Spring/Damper)
+        CalculateImpedanceForce(
+            ActX := ActX, ActY := ActY, ActTheta := ActTheta,
+            TargetX := SetAppX, TargetY := SetAppY, TargetTheta := SetAppTheta,
+			 ActVelX := 0.0, ActVelY := 0.0, ActVelTheta := 0.0,  
+			TargetVelX  := SetVelAppX, TargetVelY := SetVelAppY, TargetVelTheta := SetVelAppTheta, Fx_Cmd => CalcForces[1], 
+            Fy_Cmd      => CalcForces[2], 
+            MTheta_Cmd  => CalcForces[3] );
+
+        // D. Convert to Torque & Drive
+        JacobianTranspose(
+            TargetFx := CalcForces[1], TargetFy := CalcForces[2], TargetMTheta := CalcForces[3],
+            ActR := ActR, ActBeta := ActBeta,
+            JointTorqueTarget => CalcTorques
+        );
+
+        DriveMotors(TorqueSetpoints := CalcTorques);
+
+        // E. Check Completion
+        IF bAtPointA THEN
+            GVL_MessageStaus.MessageStaus  := 'Reached Point A. Resting...';
+            bWaitEnable := TRUE; 
+            iState := 7;
+        END_IF
+
+
+    // -----------------------------------------------------
+    // STATE 7: WAIT (Rest at Corners)
+    // -----------------------------------------------------
+    7:
+        // In Assistive mode, "Wait" means Zero Torque (Free Mode) 
+        // or Holding Position (Stiff Mode). Here we use Zero Torque for rest.
+        CalcTorques[1] := 0; 
+        CalcTorques[2] := 0; 
+        CalcTorques[3] := 0;
+        DriveMotors(TorqueSetpoints := CalcTorques);
+
+        IF fbWaitTimer.Q THEN
+            bWaitEnable := FALSE;
+            lrS_T   := 0;
+            lrS_dot := 0;
+            iCurrentSegment := 10; // Begin Main Triangle
+            iState := 40;
+            GVL_MessageStaus.MessageStaus  := 'Assistive: Path A to B started.';
+        END_IF
+		
+(*
+
+
+    // -----------------------------------------------------
+    // STATE 10: MAIN ASSISTIVE LOOP (A->B->C->A)
+    // -----------------------------------------------------
+    10:
+        // --- A. Select Target Segment Length ---
+        CASE iCurrentSegment OF
+            10: lrL_Target := lrL1; // A->B
+            20: lrL_Target := lrL2; // B->C
+            30: lrL_Target := lrL3; // C->A
+        END_CASE
+
+        // --- B. Move Virtual Target (The Rabbit) ---
+        bSegmentDone := UpdateTrapezoid(lrL_total := lrL_Target);
+
+        // --- C. Update Path Setpoints (Find X,Y of the Rabbit) ---
+        // This method calculates SetX, SetY based on iCurrentSegment and lrS_T
+        UpdatePathSetpoints(
+            TargetX => SetX,
+            TargetY => SetY,
+            TargetTheta => SetTheta
+        );
+
+        // --- D. Calculate Impedance Force (The "Rubber Band") ---
+        // Pulls the patient towards SetX/SetY
+        CalculateImpedanceForce(
+            ActX := ActX, ActY := ActY, ActTheta := ActTheta,
+            TargetX := SetX, TargetY := SetY, TargetTheta := SetTheta,
+            Kp_Cart := 0.5, // Stiffness: Adjust for "Assist Strength"
+            Kd_Cart := 0.05, // Damping: Adjust for stability
+            Fx_Cmd => CalcForces[1], 
+            Fy_Cmd => CalcForces[2], 
+            MTheta_Cmd => CalcForces[3]
+        );
+
+        // --- E. Convert Force to Torque ---
+        JacobianTranspose(
+            TargetFx := CalcForces[1], 
+            TargetFy := CalcForces[2], 
+            TargetMTheta := CalcForces[3],
+            ActR := ActR, 
+            ActBeta := ActBeta,
+            JointTorqueTarget => CalcTorques
+        );
+
+        // --- F. Drive Motors ---
+        DriveMotors(TorqueSetpoints := CalcTorques);
+
+        // --- G. Segment Transition Logic ---
+        IF bSegmentDone THEN
+            bWaitEnable := TRUE; 
+            lrS_T   := 0; // Reset Path Distance
+            lrS_dot := 0; // Reset Velocity
+        END_IF
+
+        // Handle Waiting (Zero Torque during wait)
+        IF bWaitEnable THEN
+             // Optional: Zero torque to let patient rest arm
+             CalcTorques[1] := 0; CalcTorques[2] := 0; CalcTorques[3] := 0;
+             DriveMotors(TorqueSetpoints := CalcTorques);
+        END_IF
+
+        // Handle Timer Expiry & Switching
+        IF fbWaitTimer.Q THEN
+            bWaitEnable := FALSE;
+
+            IF iCurrentSegment = 10 THEN
+                iCurrentSegment := 20;
+                GVL_MessageStaus.MessageStaus := 'Assistive: Path B to C.';
+            ELSIF iCurrentSegment = 20 THEN
+                iCurrentSegment := 30;
+                GVL_MessageStaus.MessageStaus := 'Assistive: Path C to A.';
+            ELSIF iCurrentSegment = 30 THEN
+                iState := 40; // Done
+                GVL_MessageStaus.MessageStaus := 'Assistive Task Complete.';
+            END_IF
+        END_IF
+		
+		*)
+
+    // -----------------------------------------------------
+    // STATE 40: FINISHED
+    // -----------------------------------------------------
+    40:
+        bBusy := FALSE;
+        // Zero Torque (Free Mode)
+        CalcTorques[1] := 0; CalcTorques[2] := 0; CalcTorques[3] := 0;
+        DriveMotors(TorqueSetpoints := CalcTorques);
+
+END_CASE]]></ST>
+    </Implementation>
+    <Method Name="CalculateImpedanceForce" Id="{5be15c14-1f4e-4085-8cbb-c717ae6da3bd}">
+      <Declaration><![CDATA[METHOD CalculateImpedanceForce : BOOL
+VAR_INPUT
+    // --- Position Feedback (Where is the robot?) ---
+    ActX     : LREAL; 
+    ActY     : LREAL; 
+    ActTheta : LREAL; 
+    
+    // --- Velocity Feedback (How fast is it moving?) ---
+    // [CRITICAL] You must calculate this in your Main/Robot FB
+    ActVelX     : LREAL;
+    ActVelY     : LREAL;
+    ActVelTheta : LREAL;
+
+    // --- Targets (From Profile) ---
+    TargetX     : LREAL;
+    TargetY     : LREAL;
+    TargetTheta : LREAL;
+    
+    // Optional: Target Velocity (Feedforward)
+    // Set to 0.0 if you just want to hold a position
+    TargetVelX     : LREAL := 0.0;
+    TargetVelY     : LREAL := 0.0;
+    TargetVelTheta : LREAL := 0.0;
+    
+
+    
+END_VAR
+VAR_OUTPUT
+    // --- Final Force Commands ---
+    Fx_Cmd      : LREAL;
+    Fy_Cmd      : LREAL;
+    MTheta_Cmd  : LREAL;
+END_VAR
+VAR
+    // Errors
+  //  Ex, Ey, ETheta    : LREAL; // Position Errors
+    EvX, EvY, EvTheta : LREAL; // Velocity Errors
+	
+	Kp_Cart  : LREAL := 0.1 ; // Stiffness (N/mm) - "The Spring"
+    Kd_Cart  : LREAL := 0.0; // Damping (Ns/mm)  - "The Honey"
+    
+    Kp_Rot   : LREAL := 0.05; // Rotational Stiffness
+    Kd_Rot   : LREAL := 0.0; //tational Damping
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// -----------------------------------------------------------------------------
+// 1. Calculate Position Errors (The Spring Stretch)
+// -----------------------------------------------------------------------------
+Ex     := TargetX - ActX;
+Ey     := TargetY - ActY;
+ETheta := TargetTheta - ActTheta;
+
+// -----------------------------------------------------------------------------
+// 2. Calculate Velocity Errors (The Speed Difference)
+// -----------------------------------------------------------------------------
+// If TargetVel is 0, this becomes (0 - ActualVel), creating a braking force.
+EvX     := TargetVelX - ActVelX;
+EvY     := TargetVelY - ActVelY;
+EvTheta := TargetVelTheta - ActVelTheta;
+
+// -----------------------------------------------------------------------------
+// 3. Apply Full Impedance Law: F = (Kp * PosError) + (Kd * VelError)
+// -----------------------------------------------------------------------------
+Fx_Cmd     := (Kp_Cart * Ex) + (Kd_Cart * EvX);
+Fy_Cmd     := (Kp_Cart * Ey) + (Kd_Cart * EvY);
+MTheta_Cmd := (Kp_Rot * ETheta) + (Kd_Rot * EvTheta);
+
+CalculateImpedanceForce := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="DriveMotors" Id="{af9e8efc-28d5-4261-a202-25b7da9756da}">
+      <Declaration><![CDATA[METHOD DriveMotors : BOOL
+VAR_INPUT
+	TorqueSetpoints : ARRAY [1..3] OF LREAL; // Calculated Torque (mNm)
+END_VAR
+
+VAR
+	lrRatedTorque_Axis1 : LREAL := 810.425; 
+    lrRatedTorque_Axis2 : LREAL := 383.934;
+    lrRatedTorque_Axis3 : LREAL := 382.060;
+	
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// SCALING mm/s to Percentage
+// Motor 1 (Axis 1)
+lrTorqueSetpoint_Pct[1] := (TorqueSetpoints[1] / lrRatedTorque_Axis1) * 100.0;
+
+// Motor 2 (Axis 2)
+lrTorqueSetpoint_Pct[2] := (TorqueSetpoints[2] / lrRatedTorque_Axis2) * 100.0;
+
+// Motor 3 (Axis 3)
+lrTorqueSetpoint_Pct[3] := (TorqueSetpoints[3] / lrRatedTorque_Axis3) * 100.0;
+
+
+
+
+
+
+fbTorqueAxis1(
+    Axis             := GVL_Axes.Axis1,
+    Execute          := TRUE,                 // Keep TRUE to stay active
+    ContinuousUpdate := TRUE,                 // CRITICAL: Allows changing torque every cycle
+    Torque           := lrTorqueSetpoint_Pct[1],   // Input from Jacobian
+    Relative         := FALSE,  // Absolute Torque
+	TorqueRamp         :=   1000.0,               
+    VelocityLimitHigh:= MaxSpeedLimit,        // Safety: Prevent runaway if resistance is lost
+    VelocityLimitLow := -MaxSpeedLimit
+);
+
+// -----------------------------------------------------------------------------
+// AXIS 2 TORQUE CONTROL
+// -----------------------------------------------------------------------------
+fbTorqueAxis2(
+    Axis             := GVL_Axes.Axis2,
+    Execute          := TRUE,
+    ContinuousUpdate := TRUE,
+    Torque           := lrTorqueSetpoint_Pct[2],
+    Relative         := FALSE,
+	TorqueRamp         := 1000.0,
+    VelocityLimitHigh:= MaxSpeedLimit,
+    VelocityLimitLow := -MaxSpeedLimit
+);
+
+// -----------------------------------------------------------------------------
+// AXIS 3 TORQUE CONTROL
+// -----------------------------------------------------------------------------
+fbTorqueAxis3(
+    Axis             := GVL_Axes.Axis3,
+    Execute          := TRUE,
+    ContinuousUpdate := TRUE,
+    Torque           := lrTorqueSetpoint_Pct[3],
+    Relative         := FALSE,
+	TorqueRamp         :=   1000.0,
+    VelocityLimitHigh:= MaxSpeedLimit,
+    VelocityLimitLow := -MaxSpeedLimit
+);
+
+DriveMotors := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="JacobianTranspose" Id="{5ac7b657-c7c7-48c1-8e6e-9c88a3489417}">
+      <Declaration><![CDATA[METHOD JacobianTranspose : BOOL
+VAR_INPUT
+    // Inputs (Forces & Robot State)
+    TargetFx     : LREAL; // Force in X (N)
+    TargetFy     : LREAL; // Force in Y (N)
+    TargetMTheta : LREAL; // Moment for Wrist (Nmm)
+    
+    ActR         : LREAL; // Current Radius (mm)
+    ActBeta      : LREAL; // Current Arm Angle (Degrees) - Corresponds to 'Beta'
+END_VAR
+VAR_OUTPUT
+    // Outputs (Motor Torques)
+    JointTorqueTarget : ARRAY [1..3] OF LREAL;
+END_VAR
+VAR
+    // Local Variables
+    BetaRad : LREAL;
+    R_mm    : LREAL;
+    PI_180    : LREAL := 0.0174532925199433; 
+    // Jacobian Matrix Elements
+    J11, J12, J13 : LREAL;
+    J21, J22, J23 : LREAL;
+    J31, J32, J33 : LREAL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// -----------------------------------------------------------------------------
+// 1. Assign local values (Consistent with your Inverse Jacobian style)
+// -----------------------------------------------------------------------------
+BetaRad := ActBeta * PI_180; // Convert Degree to Radian
+R_mm    := ActR;
+
+// -----------------------------------------------------------------------------
+// 2. Populate Jacobian Matrix Elements (Derived from your Forward Kinematics)
+// -----------------------------------------------------------------------------
+// Row 1: How X changes with motors
+J11 := -R_mm * GVL_ConstantCoefficent.K1 * PI_180 * COS(BetaRad); 
+J12 :=  GVL_ConstantCoefficent.K2 * SIN(BetaRad);
+J13 := -GVL_ConstantCoefficent.K2 * SIN(BetaRad);
+
+// Row 2: How Y changes with motors
+J21 :=  R_mm * GVL_ConstantCoefficent.K1 * PI_180 * SIN(BetaRad);
+J22 :=  GVL_ConstantCoefficent.K2 * COS(BetaRad);
+J23 := -GVL_ConstantCoefficent.K2 * COS(BetaRad);
+
+// Row 3: How Theta (Wrist) changes with motors
+J31 := 0.0;
+J32 := -GVL_ConstantCoefficent.K3 / 2.0;
+J33 := -GVL_ConstantCoefficent.K3 / 2.0;
+
+// -----------------------------------------------------------------------------
+// 3. Apply Jacobian Transpose (Tau = J_Transpose * Force)
+// -----------------------------------------------------------------------------
+
+// Motor 1 Torque: Sum of (Col 1 * Forces)
+JointTorqueTarget[1] := (J11 * TargetFx) + (J21 * TargetFy) + (J31 * TargetMTheta);
+
+// Motor 2 Torque: Sum of (Col 2 * Forces)
+JointTorqueTarget[2] := (J12 * TargetFx) + (J22 * TargetFy) + (J32 * TargetMTheta);
+
+// Motor 3 Torque: Sum of (Col 3 * Forces)
+JointTorqueTarget[3] := (J13 * TargetFx) + (J23 * TargetFy) + (J33 * TargetMTheta);
+
+JacobianTranspose := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UpdatePathSetpoints" Id="{5387cd36-13d1-4242-ae1d-11d35d47e047}">
+      <Declaration><![CDATA[METHOD UpdatePathSetpoints : BOOL
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+CASE iCurrentSegment OF
+    10: // Line A -> B
+        IF lrL1 > 0.0 THEN
+            stCurrentSet[1] := stPointA[1] + (lrDX1 / lrL1) * lrS_T;
+            stCurrentSet[2] := stPointA[2] + (lrDY1 / lrL1) * lrS_T;
+            stCurrentSet[3] := stPointA[3] + (lrDTh1 / lrL1) * lrS_T;
+            
+            // Calculate Feedforward Velocities (Unit Vector * Current Speed)
+            lrVx_FF := (lrDX1 / lrL1) * lrS_dot;
+            lrVy_FF := (lrDY1 / lrL1) * lrS_dot;
+            lrVTh_FF := (lrDTh1 / lrL1) * lrS_dot;
+        END_IF;
+
+    20: // Line B -> C
+        IF lrL2 > 0.0 THEN
+            stCurrentSet[1] := stPointB[1] + (lrDX2 / lrL2) * lrS_T;
+            stCurrentSet[2] := stPointB[2] + (lrDY2 / lrL2) * lrS_T;
+            stCurrentSet[3] := stPointB[3] + (lrDTh2 / lrL2) * lrS_T;
+            
+            lrVx_FF := (lrDX2 / lrL2) * lrS_dot;
+            lrVy_FF := (lrDY2 / lrL2) * lrS_dot;
+            lrVTh_FF := (lrDTh2 / lrL2) * lrS_dot;
+        END_IF;
+
+    30: // Line C -> A
+        IF lrL3 > 0.0 THEN
+            stCurrentSet[1] := stPointC[1] + (lrDX3 / lrL3) * lrS_T;
+            stCurrentSet[2] := stPointC[2] + (lrDY3 / lrL3) * lrS_T;
+            stCurrentSet[3] := stPointC[3] + (lrDTh3 / lrL3) * lrS_T;
+            
+            lrVx_FF := (lrDX3 / lrL3) * lrS_dot;
+            lrVy_FF := (lrDY3 / lrL3) * lrS_dot;
+            lrVTh_FF := (lrDTh3 / lrL3) * lrS_dot;
+        END_IF;
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UpdateTrapezoid" Id="{3d0b3da3-c091-4ca5-add4-bccf2daf61c3}">
+      <Declaration><![CDATA[METHOD UpdateTrapezoid : BOOL
+VAR_INPUT
+	lrL_total : LREAL;
+	
+END_VAR
+
+VAR
+		
+    dist_rem  : LREAL;
+    CycleTime : LREAL := 0.01;  //plc cycle time is 10 ms
+	S_dec : LREAL; // calcullated stopping distance
+	
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// This method calculates the current velocity and distance scalar for the move.
+
+s_dec := (lrVmax * lrVmax) / (2.0 * lrAcc);
+dist_rem := lrL_total - lrS_T;
+
+IF dist_rem > s_dec THEN
+    lrS_dot := MIN(lrS_dot + (lrAcc * CycleTime), lrVmax);
+ELSE
+    lrS_dot := SQRT(2.0 * lrAcc * MAX(0.0, dist_rem));
+END_IF
+
+lrS_T := lrS_T + (lrS_dot * CycleTime);
+
+IF dist_rem <= 0.001 THEN
+    UpdateTrapezoid := TRUE; // Signal segment complete
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_ImpedanceController">
+      <LineId Id="596" Count="0" />
+      <LineId Id="600" Count="0" />
+      <LineId Id="599" Count="0" />
+      <LineId Id="601" Count="0" />
+      <LineId Id="597" Count="1" />
+      <LineId Id="475" Count="0" />
+      <LineId Id="478" Count="1" />
+      <LineId Id="476" Count="1" />
+      <LineId Id="162" Count="3" />
+      <LineId Id="608" Count="0" />
+      <LineId Id="166" Count="0" />
+      <LineId Id="607" Count="0" />
+      <LineId Id="167" Count="6" />
+      <LineId Id="500" Count="0" />
+      <LineId Id="174" Count="0" />
+      <LineId Id="609" Count="0" />
+      <LineId Id="603" Count="0" />
+      <LineId Id="602" Count="0" />
+      <LineId Id="175" Count="62" />
+      <LineId Id="487" Count="0" />
+      <LineId Id="489" Count="1" />
+      <LineId Id="488" Count="0" />
+      <LineId Id="238" Count="4" />
+      <LineId Id="498" Count="0" />
+      <LineId Id="496" Count="1" />
+      <LineId Id="495" Count="0" />
+      <LineId Id="246" Count="36" />
+      <LineId Id="501" Count="1" />
+      <LineId Id="283" Count="77" />
+      <LineId Id="503" Count="1" />
+      <LineId Id="361" Count="9" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_ImpedanceController.CalculateImpedanceForce">
+      <LineId Id="46" Count="21" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_ImpedanceController.DriveMotors">
+      <LineId Id="51" Count="0" />
+      <LineId Id="55" Count="6" />
+      <LineId Id="52" Count="1" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="65" Count="1" />
+      <LineId Id="64" Count="0" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="7" Count="5" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="13" Count="12" />
+      <LineId Id="76" Count="0" />
+      <LineId Id="26" Count="12" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="39" Count="3" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_ImpedanceController.JacobianTranspose">
+      <LineId Id="6" Count="36" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_ImpedanceController.UpdatePathSetpoints">
+      <LineId Id="87" Count="34" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_ImpedanceController.UpdateTrapezoid">
+      <LineId Id="49" Count="1" />
+      <LineId Id="36" Count="12" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

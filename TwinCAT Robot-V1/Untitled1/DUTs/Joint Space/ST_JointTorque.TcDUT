@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_JointTorque" Id="{4f0b1011-db1d-4a94-bb09-38e00792bf14}">
+    <Declaration><![CDATA[TYPE ST_JointTorque :
+STRUCT
+	M1 : LREAL;
+    M2 : LREAL;
+    M3 : LREAL;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

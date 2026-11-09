@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 130">
+  <!-- workspace ring -->
+  <circle cx="80" cy="42" r="30" fill="none" stroke="#1A365D" stroke-width="7"/>
+
+  <!-- orbiting end-effector dot -->
+  <circle cx="80" cy="12" r="8" fill="#2F855A">
+    <animateTransform
+      attributeName="transform"
+      type="rotate"
+      from="0 80 42"
+      to="360 80 42"
+      dur="9s"
+      repeatCount="indefinite"/>
+  </circle>
+
+  <!-- wordmark -->
+  <text x="80" y="110" font-family="Segoe UI, system-ui, sans-serif" font-weight="700"
+        font-size="22" letter-spacing="0.18em" fill="#1A365D" text-anchor="middle">MOTIVA</text>
+</svg>

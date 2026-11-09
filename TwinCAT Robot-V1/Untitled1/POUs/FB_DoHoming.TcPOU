@@ -1,0 +1,558 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_DoHoming" Id="{24e8fc17-5e50-4741-9205-ef0495f488ad}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_DoHoming
+VAR_INPUT
+	 HStart : BOOL;            (* Start homing *)
+END_VAR
+VAR_OUTPUT
+	 HM123Done: BOOL;            (* Homing finished *)
+	 HomingError : BOOL;
+END_VAR
+VAR
+	 StateM1Homing : INT := 0;
+	 StateM2M3Homing : INT := 0;
+	 
+   
+   
+
+    (* Velocity control FBs *)
+    fbVelM1  : MC_MoveVelocity;
+	fbVelM2  : MC_MoveVelocity;
+    fbVelM3  : MC_MoveVelocity;
+	fbMoReM1  : MC_MoveRelative;
+	fbMoReM2  : MC_MoveRelative;
+	fbMoReM3  : MC_MoveRelative;
+	fbStopM1 : MC_Halt;
+    fbStopM2 : MC_Halt;
+    fbStopM3 : MC_Halt;
+	
+	
+
+    (* Parameters *)
+   	vBetaHome: LREAL:= 0.5; 			  (* safe speed for beta homing *)
+	vThetaHome : LREAL := 0.5;    (* safe speed for theta homing *)
+    vRHome     : LREAL := 0.5;    (* safe speed for R homing *)
+	SwTheta1 : BOOL;
+	SwR1: BOOL;
+	
+	
+	StateM1: INT;
+	SwBeta1: BOOL;
+	HM1Done: BOOL;
+	
+	SwTheta2: BOOL;
+	SwR2: BOOL;
+	SwBeta2: BOOL;
+	
+	// Torque
+	
+    TorqueM1 : LREAL;
+    TorqueM2 : LREAL;
+    TorqueM3 : LREAL;
+	TorqueLimitHome : LREAL := 60.0;
+	tOverTorque : TON;
+	fbStopLockM1: MC_STOP;
+	fbStopLockM2: MC_STOP;
+	fbStopLockM3: MC_STOP;
+	
+	// moves after contacting to Microswitch to reach nutral possition
+	rSwBeta1  : R_TRIG;
+	rSwTheta1 : R_TRIG;
+	rSwR2 : R_TRIG;
+	fbReadPosM1 : MC_ReadActualPosition;
+	fbReadPosM2 : MC_ReadActualPosition;
+	fbReadPosM3 : MC_ReadActualPosition;
+	MinPosBeta: LREAL;
+	
+	NeutralOffsetBeta: LREAL;
+	NutPosBeta: LREAL;
+	MinPositionThM2: LREAL;
+	NeutralOffsetM2: LREAL;
+	NeutralOffsetM3: LREAL;
+	MinPositionThM3: LREAL;
+	MinPoTheta: LREAL;
+	NeutralOffsetM2M3Theta: LREAL;
+	NutPosTheta: LREAL;
+	MinPositionRM2: LREAL;
+	MinPositionRM3: LREAL;
+	MinPoR: LREAL;
+	NeutralOffsetM2M3R: LREAL;
+	NutPosR: LREAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+(* ========================== *)
+(*       HOMING LOGIC         *)
+(* ========================== *)
+
+(* update switch values from global DWORD *)
+SwTheta1 	 := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00020000) <> 0;  (* bit 0 *)
+SwTheta2     := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00010000) <> 0;  (* bit 1 *)
+SwR1    	 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00080000) <> 0;  (* bit 0 *)
+SwR2  		 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00040000) <> 0;  (* bit 1 *)
+SwBeta1      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00020000) <> 0;  (* bit 2 *)
+SwBeta2      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00010000) <> 0;  (* bit 3 *)
+		
+			fbVelM1(
+            Axis        := GVL_Axes.Axis1,
+			velocity := vBetaHome,
+			Acceleration := 1.0,
+            Deceleration := 1000.0 );
+			
+			fbVelM2(
+            Axis        := GVL_Axes.Axis2,
+			velocity := vThetaHome,
+			Acceleration := 1.0,
+            Deceleration := 1000.0 );
+
+        	fbVelM3(
+            Axis        := GVL_Axes.Axis3,
+			velocity := vThetaHome,
+			Acceleration := 1.0,
+            Deceleration := 1000.0 );
+			
+		fbStopM1(
+            Axis         := GVL_Axes.Axis1,
+            Deceleration := 1000.0);
+		fbStopM2(
+            Axis         := GVL_Axes.Axis2,
+            Deceleration := 1000.0);
+			
+		fbStopM3(
+            Axis         := GVL_Axes.Axis3,
+            Deceleration := 1000.0);
+			
+		fbStopLockM1(
+            Axis         := GVL_Axes.Axis1);
+		fbStopLockM2(
+            Axis         := GVL_Axes.Axis2);
+		fbStopLockM3(
+            Axis         := GVL_Axes.Axis3);	
+			
+			
+// Reading Torque
+TorqueM1 := GVL_Torque.TorqueM1_Act;
+TorqueM2 := GVL_Torque.TorqueM2_Act;
+TorqueM3 := GVL_Torque.TorqueM3_Act;	
+
+// Reading Actual Position
+fbReadPosM1(Axis := GVL_Axes.Axis1, Enable := TRUE);
+fbReadPosM2(Axis := GVL_Axes.Axis2, Enable := TRUE);
+fbReadPosM3(Axis := GVL_Axes.Axis3, Enable := TRUE);
+
+
+// Mechanical Stopper
+tOverTorque(
+    IN := ABS(TorqueM1)  > TorqueLimitHome OR (ABS(TorqueM2)+ ABS(TorqueM3))  > TorqueLimitHome,
+    PT := T#50MS);	
+	IF toverTorque.Q  THEN
+    (* stop all motors safely *)
+    fbVelM1.Execute := FALSE;
+    fbVelM2.Execute := FALSE;
+    fbVelM3.Execute := FALSE;
+
+    fbStopLockM1.Execute := TRUE;
+    fbStopLockM2.Execute := TRUE;
+	fbStopLockM3.Execute := TRUE;
+
+    HomingError := TRUE;
+       
+END_IF
+
+// Function Block - Move to Neutral Position
+fbMoReM1(
+ Axis:= GVL_Axes.Axis1,
+ Velocity := vBetaHome,
+ Acceleration := 10,
+ Deceleration := 1000);
+ 
+ fbMoReM2(
+ Axis:= GVL_Axes.Axis2,
+  Velocity := vThetaHome,
+ Acceleration := 10,
+ Deceleration := 1000);
+ 
+ fbMoReM3(
+ Axis:= GVL_Axes.Axis3,
+ Velocity := vThetaHome,
+ Acceleration := 10,
+ Deceleration := 1000);
+ 
+ 
+
+// Homing Motor A - Motor1
+IF NOT HomingError THEN 
+	
+CASE StateM1Homing OF
+
+    0:  (* IDLE *)
+        HM1Done := FALSE;
+        IF HStart THEN
+            StateM1Homing := 10;      (* start beta homing *)
+        END_IF
+
+
+    10: (* HOME Beta: move pure -beta until SwBeta *)
+        fbVelM1.Execute := TRUE;
+		fbVelM1.Direction := MC_Direction.MC_Negative_Direction;
+		rSwBeta1(CLK := SwBeta1);
+
+         IF rSwBeta1.Q THEN 
+                     
+            MinPosBeta := fbReadPosM1.Position; 
+		   	StateM1Homing := 15;
+			
+         
+        END_IF
+	
+		
+	15: (* WAIT UNTIL STOP AFTER THETA *)
+        fbVelM1.Execute := FALSE;
+		fbStopM1.Execute   := TRUE;
+                 
+
+        IF fbStopM1.Done THEN
+            
+            StateM1Homing := 17;   (* now ready for R homing *)
+			NeutralOffsetBeta := ((121297.0/10000.0)/2) + ABS(fbReadPosM1.Position - MinPosBeta);
+			
+        END_IF
+		
+	17: (*Motor MOVE TO nutral position*)
+	fbStopM1.Execute := FALSE;
+    fbMoReM1.Execute := TRUE;
+	fbMoReM1.Distance := NeutralOffsetBeta;
+	
+	IF fbMoReM1.Done THEN
+		StateM1Homing := 20;
+		NutPosBeta := fbReadPosM1.Position; 
+		GVL_HomingResult.gHoming.HomePos_Beta :=NutPosBeta; 
+	END_IF
+	
+	
+
+
+    20: (* Homming of M1 is DONE *)
+			
+			fbMoReM1.Execute := FALSE;
+			HM1Done := TRUE;
+
+       
+END_CASE
+
+
+
+
+
+// Homing Motor B & C - (Motor 2 & 3)
+
+CASE StateM2M3Homing OF
+
+    0:  (* IDLE *)
+        HM123Done := FALSE;
+
+        IF HM1Done THEN
+            StateM2M3Homing := 10;      (* start θ homing *)
+        END_IF
+
+
+    10: (* HOME THETA: move pure -theta until SwTheta *)
+        fbVelM2.Execute := TRUE;
+		fbVelM2.Direction := MC_Direction.MC_Positive_Direction;
+		fbVelM3.Execute := TRUE;
+		fbVelM3.Direction := MC_Direction.MC_Positive_Direction;
+		rSwTheta1(CLK := SwTheta1);
+		
+		IF rSwTheta1.Q THEN 
+                     
+            MinPositionThM2 := fbReadPosM2.Position; 
+			MinPositionThM3 := fbReadPosM3.Position;
+			MinPoTheta := MinPositionThM2+MinPositionThM3;
+		   	StateM2M3Homing := 15;
+			
+         
+        END_IF
+        
+		
+	15: (* WAIT UNTIL STOP AFTER THETA *)
+			fbVelM2.Execute := FALSE;
+			fbVelM3.Execute := FALSE;       
+			fbStopM2.Execute   := TRUE;
+      		fbStopM3.Execute   := TRUE;
+            
+
+        IF fbStopM2.Done AND fbStopM3.Done THEN
+            
+            StateM2M3Homing := 17;   (* now ready for R homing *)
+			NeutralOffsetM2M3Theta := ((1.6384/360.0)*60.0) + MIN (ABS(fbReadPosM2.Position - MinPositionThM2), ABS(fbReadPosM3.Position - MinPositionThM3));
+       // ((5000/10000)/2)
+ END_IF
+		
+	17: (*Motors MOVE TO nutral position of THETA*)
+		fbStopM2.Execute := FALSE;
+		fbStopM3.Execute := FALSE;
+		fbMoReM2.Execute := TRUE;
+		fbMoReM3.Execute := TRUE;
+		fbMoReM2.Distance := - NeutralOffsetM2M3Theta;
+		fbMoReM3.Distance := - NeutralOffsetM2M3Theta;
+		
+	
+	IF (fbMoReM2.Done AND fbMoReM3.Done) THEN
+		StateM2M3Homing := 20;
+		NutPosTheta := fbReadPosM2.Position + fbReadPosM3.Position; 
+		GVL_HomingResult.gHoming.HomePos_Theta := NutPosTheta; 
+	END_IF
+
+
+    20: (* HOME R: move pure -R until SwR *)
+		fbMoReM2.Execute := FALSE;
+		fbMoReM3.Execute := FALSE; 
+        fbVelM2.Execute   := TRUE;
+		fbVelM2.Direction := MC_Direction.MC_Negative_Direction;
+        fbVelM3.Execute   := TRUE;
+		fbVelM3.Direction := MC_Direction.MC_Positive_Direction;
+	
+        rSwR2(CLK := SwR2);
+		
+		IF rSwR2.Q THEN 
+                     
+            MinPositionRM2 := fbReadPosM2.Position; 
+			MinPositionRM3 := fbReadPosM3.Position;
+			MinPoR := MinPositionRM2-MinPositionRM3;
+			StateM2M3Homing := 25;
+			
+         END_IF
+		 
+	 
+       
+
+ 
+		
+	25: (* WAIT UNTIL STOP AFTER R *)
+		fbVelM3.Execute   := FALSE;
+		fbVelM3.Execute   := FALSE;
+        fbStopM2.Execute := TRUE;
+        fbStopM3.Execute := TRUE;
+
+        IF fbStopM2.Done AND fbStopM3.Done THEN
+			
+            
+            StateM2M3Homing := 27;     (* finished homing *)
+			NeutralOffsetM2M3R := (((16384.0/10000.0)/80.0)*5.0) + MIN (ABS(fbReadPosM2.Position - MinPositionRM2), ABS(fbReadPosM3.Position - MinPositionRM3));
+        END_IF
+		
+	27: (*Motors MOVE TO nutral position of R*)
+		fbStopM2.Execute := FALSE;
+		fbStopM3.Execute := FALSE;
+		fbMoReM2.Execute := TRUE;
+		fbMoReM3.Execute := TRUE;
+		fbMoReM2.Distance := NeutralOffsetM2M3R;
+		fbMoReM3.Distance := -NeutralOffsetM2M3R;  // negative?
+		
+		IF (fbMoReM2.Done AND fbMoReM3.Done) THEN
+		StateM2M3Homing := 30;
+		NutPosR := fbReadPosM2.Position - fbReadPosM3.Position;
+		GVL_HomingResult.gHoming.HomePos_R := NutPosR;  
+	END_IF
+	
+
+
+    30: (* DONE *)
+			fbMoReM2.Execute := FALSE;
+			fbMoReM3.Execute := FALSE;
+			fbStopM2.Execute   := FALSE;
+        	fbStopM3.Execute   := FALSE;
+       		HM123Done := TRUE;
+
+        (* Wait for next cycle of HStart=FALSE before resetting *)
+        IF NOT HStart THEN
+            StateM2M3Homing := 0;   (* ready for next command *)
+        END_IF
+
+END_CASE
+
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="FB_DoHoming">
+      <LineId Id="29" Count="3" />
+      <LineId Id="129" Count="0" />
+      <LineId Id="131" Count="0" />
+      <LineId Id="128" Count="0" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="385" Count="3" />
+      <LineId Id="218" Count="0" />
+      <LineId Id="288" Count="2" />
+      <LineId Id="294" Count="0" />
+      <LineId Id="286" Count="0" />
+      <LineId Id="397" Count="0" />
+      <LineId Id="287" Count="0" />
+      <LineId Id="219" Count="0" />
+      <LineId Id="260" Count="0" />
+      <LineId Id="232" Count="0" />
+      <LineId Id="231" Count="0" />
+      <LineId Id="225" Count="2" />
+      <LineId Id="261" Count="0" />
+      <LineId Id="234" Count="0" />
+      <LineId Id="233" Count="0" />
+      <LineId Id="236" Count="0" />
+      <LineId Id="395" Count="1" />
+      <LineId Id="254" Count="0" />
+      <LineId Id="394" Count="0" />
+      <LineId Id="255" Count="4" />
+      <LineId Id="245" Count="0" />
+      <LineId Id="501" Count="0" />
+      <LineId Id="493" Count="1" />
+      <LineId Id="496" Count="1" />
+      <LineId Id="499" Count="1" />
+      <LineId Id="492" Count="0" />
+      <LineId Id="470" Count="0" />
+      <LineId Id="409" Count="0" />
+      <LineId Id="417" Count="0" />
+      <LineId Id="420" Count="1" />
+      <LineId Id="571" Count="1" />
+      <LineId Id="574" Count="0" />
+      <LineId Id="573" Count="0" />
+      <LineId Id="575" Count="0" />
+      <LineId Id="570" Count="0" />
+      <LineId Id="502" Count="0" />
+      <LineId Id="472" Count="2" />
+      <LineId Id="471" Count="0" />
+      <LineId Id="476" Count="2" />
+      <LineId Id="486" Count="0" />
+      <LineId Id="479" Count="3" />
+      <LineId Id="487" Count="0" />
+      <LineId Id="483" Count="2" />
+      <LineId Id="475" Count="0" />
+      <LineId Id="589" Count="0" />
+      <LineId Id="588" Count="0" />
+      <LineId Id="591" Count="0" />
+      <LineId Id="602" Count="0" />
+      <LineId Id="604" Count="0" />
+      <LineId Id="606" Count="0" />
+      <LineId Id="608" Count="0" />
+      <LineId Id="610" Count="0" />
+      <LineId Id="612" Count="2" />
+      <LineId Id="616" Count="0" />
+      <LineId Id="611" Count="0" />
+      <LineId Id="617" Count="0" />
+      <LineId Id="619" Count="1" />
+      <LineId Id="622" Count="1" />
+      <LineId Id="618" Count="0" />
+      <LineId Id="609" Count="0" />
+      <LineId Id="590" Count="0" />
+      <LineId Id="126" Count="1" />
+      <LineId Id="555" Count="1" />
+      <LineId Id="302" Count="3" />
+      <LineId Id="307" Count="7" />
+      <LineId Id="317" Count="0" />
+      <LineId Id="319" Count="2" />
+      <LineId Id="323" Count="0" />
+      <LineId Id="579" Count="0" />
+      <LineId Id="562" Count="0" />
+      <LineId Id="324" Count="1" />
+      <LineId Id="560" Count="0" />
+      <LineId Id="326" Count="2" />
+      <LineId Id="382" Count="0" />
+      <LineId Id="329" Count="0" />
+      <LineId Id="331" Count="2" />
+      <LineId Id="336" Count="0" />
+      <LineId Id="633" Count="1" />
+      <LineId Id="337" Count="0" />
+      <LineId Id="580" Count="1" />
+      <LineId Id="632" Count="0" />
+      <LineId Id="600" Count="0" />
+      <LineId Id="624" Count="3" />
+      <LineId Id="635" Count="0" />
+      <LineId Id="822" Count="0" />
+      <LineId Id="705" Count="0" />
+      <LineId Id="584" Count="0" />
+      <LineId Id="582" Count="0" />
+      <LineId Id="338" Count="0" />
+      <LineId Id="365" Count="3" />
+      <LineId Id="630" Count="0" />
+      <LineId Id="372" Count="0" />
+      <LineId Id="376" Count="0" />
+      <LineId Id="301" Count="0" />
+      <LineId Id="707" Count="2" />
+      <LineId Id="706" Count="0" />
+      <LineId Id="379" Count="0" />
+      <LineId Id="378" Count="0" />
+      <LineId Id="298" Count="0" />
+      <LineId Id="34" Count="10" />
+      <LineId Id="157" Count="0" />
+      <LineId Id="265" Count="0" />
+      <LineId Id="262" Count="2" />
+      <LineId Id="656" Count="0" />
+      <LineId Id="650" Count="2" />
+      <LineId Id="701" Count="0" />
+      <LineId Id="679" Count="0" />
+      <LineId Id="653" Count="2" />
+      <LineId Id="649" Count="0" />
+      <LineId Id="639" Count="0" />
+      <LineId Id="158" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="659" Count="0" />
+      <LineId Id="161" Count="0" />
+      <LineId Id="658" Count="0" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="169" Count="2" />
+      <LineId Id="181" Count="0" />
+      <LineId Id="190" Count="0" />
+      <LineId Id="681" Count="0" />
+      <LineId Id="159" Count="0" />
+      <LineId Id="742" Count="0" />
+      <LineId Id="660" Count="0" />
+      <LineId Id="662" Count="1" />
+      <LineId Id="684" Count="0" />
+      <LineId Id="664" Count="0" />
+      <LineId Id="683" Count="0" />
+      <LineId Id="665" Count="0" />
+      <LineId Id="670" Count="0" />
+      <LineId Id="672" Count="0" />
+      <LineId Id="666" Count="3" />
+      <LineId Id="823" Count="0" />
+      <LineId Id="661" Count="0" />
+      <LineId Id="77" Count="2" />
+      <LineId Id="686" Count="1" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="266" Count="0" />
+      <LineId Id="246" Count="0" />
+      <LineId Id="267" Count="0" />
+      <LineId Id="270" Count="0" />
+      <LineId Id="690" Count="6" />
+      <LineId Id="734" Count="0" />
+      <LineId Id="698" Count="1" />
+      <LineId Id="718" Count="0" />
+      <LineId Id="711" Count="0" />
+      <LineId Id="94" Count="0" />
+      <LineId Id="689" Count="0" />
+      <LineId Id="110" Count="0" />
+      <LineId Id="276" Count="0" />
+      <LineId Id="278" Count="0" />
+      <LineId Id="732" Count="1" />
+      <LineId Id="279" Count="3" />
+      <LineId Id="720" Count="0" />
+      <LineId Id="283" Count="0" />
+      <LineId Id="285" Count="0" />
+      <LineId Id="721" Count="0" />
+      <LineId Id="277" Count="0" />
+      <LineId Id="722" Count="0" />
+      <LineId Id="724" Count="5" />
+      <LineId Id="723" Count="0" />
+      <LineId Id="735" Count="0" />
+      <LineId Id="737" Count="2" />
+      <LineId Id="824" Count="0" />
+      <LineId Id="736" Count="0" />
+      <LineId Id="740" Count="0" />
+      <LineId Id="111" Count="2" />
+      <LineId Id="730" Count="1" />
+      <LineId Id="268" Count="1" />
+      <LineId Id="114" Count="6" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="559" Count="0" />
+      <LineId Id="558" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

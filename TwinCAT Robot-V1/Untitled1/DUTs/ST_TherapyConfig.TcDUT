@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_TherapyConfig" Id="{0dc9ef48-70e2-4d11-a5d6-848de960e6ac}">
+    <Declaration><![CDATA[TYPE ST_TherapyConfig :
+STRUCT
+	// 1. Core Selections
+    TherapyMode          : E_RehabMode;
+    ControllerType       : E_ControllerType;
+    
+    // 2. Feature Flags
+    FeatureInertiaComp   : BOOL;  
+    FeatureFrictionComp  : BOOL; 
+    FeatureVirtualWall   : BOOL; 
+	
+//    FeatureDataLogger    : BOOL; 
+    
+    // 3. Global Safety Limits (Apply to ALL controllers)
+    GlobalForceLimit     : LREAL := 50 ; // Maximum safe force allowed
+    GlobalVelocityLimit  : LREAL; // Maximum safe speed allowed (please clarify : is it in Jointspace or Cartesian space)
+	
+	Stiffness_K         : LREAL; // Virtual spring stiffness for Impedance
+    Damping_D           : LREAL; // Virtual friction/viscosity for Impedance
+    Mass_M              : LREAL; // Virtual mass for Admittance
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

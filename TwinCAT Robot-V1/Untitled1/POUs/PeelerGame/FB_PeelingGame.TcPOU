@@ -1,0 +1,95 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_PeelingGame" Id="{d54a37b6-5a34-4f02-af6e-44a463a7a40d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_PeelingGame
+VAR_INPUT
+	bEnable    : BOOL;
+    stCartesianPosePercentage : ST_CartesianPose; // 0-100% position from Kinematics
+	CartesianForcefY            : LREAL ; 
+ //   RehabilitationController: E_ControllerType;
+	CartesianVy : LREAL;
+	
+END_VAR
+VAR_OUTPUT
+	stJointTargetTorque : ST_JointTorque;
+END_VAR
+VAR
+	stToUnity   : ST_PeelerToUnity;   
+    stFromUnity : ST_PeelerFromUnity;
+	FYThreshold    : REAL := 2.0 ;  // Minimum Force to create Resistive Force;
+	VYThreshold : LREAL := 10.0;
+	
+
+END_VAR
+
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+
+IF bEnable THEN
+    stToUnity.fY           := stCartesianPosePercentage.Y;
+    stToUnity.GameIsActive := TRUE;
+
+    // Check if close button was pressed in Unity
+    IF stFromUnity.bGameFinished THEN
+        stToUnity.GameIsActive := FALSE;
+        stJointTargetTorque.M1 := 0.0;
+        stJointTargetTorque.M2 := 0.0;
+        stJointTargetTorque.M3 := 0.0;
+    ELSE
+        // Apply resistance ONLY when touching fruit AND moving forward (+Y)
+        IF  (CartesianVy> VYThreshold )AND( CartesianForcefY > FYThreshold) THEN
+            CASE stFromUnity.nObjectType OF
+                1: // KIWI
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := -5.0;
+                    stJointTargetTorque.M3 := 5.0;
+                    
+                2: // Orange
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := -10.0;
+                    stJointTargetTorque.M3 := 10.0;
+                    
+                3: // Grapefruit
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := -15.0;
+                    stJointTargetTorque.M3 := 15.0;
+
+                4: // Melon
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := -20.0;
+                    stJointTargetTorque.M3 := 20.0;
+
+                5: // PINEAPPLE
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := -25.0;
+                    stJointTargetTorque.M3 := 25.0;
+
+                ELSE
+                    stJointTargetTorque.M1 := 0.0;
+                    stJointTargetTorque.M2 := 0.0;
+                    stJointTargetTorque.M3 := 0.0;
+            END_CASE
+        ELSE
+            // Zero torque if not touching, moving backwards (-Y), or stationary
+            stJointTargetTorque.M1 := 0.0;
+            stJointTargetTorque.M2 := 0.0;
+            stJointTargetTorque.M3 := 0.0;
+        END_IF
+    END_IF
+
+ELSE
+    stToUnity.GameIsActive := FALSE;
+    stJointTargetTorque.M1 := 0.0;
+    stJointTargetTorque.M2 := 0.0;
+    stJointTargetTorque.M3 := 0.0;
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="FB_PeelingGame">
+      <LineId Id="88" Count="0" />
+      <LineId Id="90" Count="57" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

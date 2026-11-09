@@ -1,0 +1,515 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_LaunchGame" Id="{aca08268-8a0c-46a3-9a39-06ca65b68768}" SpecialFunc="None">
+    <Declaration><![CDATA[
+FUNCTION_BLOCK FB_LaunchGame
+
+VAR_INPUT
+    bLaunchSpong       : BOOL;
+    bLaunchPeeler      : BOOL;
+    bLaunchGoldMiner   : BOOL;
+    bLaunchBalloon     : BOOL;
+    bLaunchSnowWiper   : BOOL;
+    bLaunchSorter      : BOOL;
+    bLaunchFlower      : BOOL;
+    bLaunchCrazyCar    : BOOL;
+END_VAR
+
+VAR_OUTPUT
+    eActiveGame : E_GameID := E_GameID.NONE;
+    bBusy       : BOOL;
+    bError      : BOOL;
+END_VAR
+
+VAR
+    // Game button rising-edge detection
+    trigSpong       : R_TRIG;
+    trigPeeler      : R_TRIG;
+    trigGoldMiner   : R_TRIG;
+    trigBalloon     : R_TRIG;
+    trigSnowWiper   : R_TRIG;
+    trigSorter      : R_TRIG;
+    trigFlower      : R_TRIG;
+    trigCrazyCar    : R_TRIG;
+
+    // Windows process launchers
+    fbStartProcess : NT_StartProcess;
+    fbKillProcess  : NT_StartProcess;
+
+    // Current launch information
+    sExePath       : T_MaxString;
+    sWorkingDir    : T_MaxString;
+
+    // Requested game information
+    eRequestedGame       : E_GameID := E_GameID.NONE;
+    sRequestedExePath    : T_MaxString;
+    sRequestedWorkingDir : T_MaxString;
+    sRequestedExeName    : T_MaxString;
+
+    // Previously launched executable
+    sCurrentExeName : T_MaxString;
+
+    // Windows taskkill arguments
+    sKillCommand : T_MaxString;
+
+    // One-cycle start signals
+    bTriggerStart : BOOL := FALSE;
+    bTriggerKill  : BOOL := FALSE;
+
+    // Game switching state
+    // 0  = Idle
+    // 10 = Issue close request
+    // 20 = Wait for close-command acknowledgement
+    // 25 = Allow time for process exit
+    // 30 = Issue new game launch
+    // 40 = Wait for launch acknowledgement
+    nState : INT := 0;
+
+    // Wait after Windows accepts close command
+    tWaitAfterKill : TON;
+
+    // Diagnostic error code
+    nLastProcessErrId : UDINT := 0;
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+ // ============================================================
+ // 1. DETECT HMI BUTTON RISING EDGES
+ // ============================================================
+
+trigSpong(CLK := bLaunchSpong);
+trigPeeler(CLK := bLaunchPeeler);
+trigGoldMiner(CLK := bLaunchGoldMiner);
+trigBalloon(CLK := bLaunchBalloon);
+trigSnowWiper(CLK := bLaunchSnowWiper);
+trigSorter(CLK := bLaunchSorter);
+trigFlower(CLK := bLaunchFlower);
+trigCrazyCar(CLK := bLaunchCrazyCar);
+
+
+// ============================================================
+// 2. ACCEPT NEW GAME SELECTION ONLY WHEN IDLE
+// ============================================================
+
+IF nState = 0 THEN
+
+    IF trigSpong.Q OR
+       trigPeeler.Q OR
+       trigGoldMiner.Q OR
+       trigBalloon.Q OR
+       trigSnowWiper.Q OR
+       trigSorter.Q OR
+       trigFlower.Q OR
+       trigCrazyCar.Q THEN
+
+        // ----------------------------------------------------
+        // PONG
+        // ----------------------------------------------------
+        IF trigSpong.Q THEN
+
+            eRequestedGame := E_GameID.PONG;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\PongV2\RobotGame_BuildV4\Pong.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\PongV2\RobotGame_BuildV4\';
+
+            sRequestedExeName := 'Pong.exe';
+
+
+        // ----------------------------------------------------
+        // PEELER
+        // ----------------------------------------------------
+        ELSIF trigPeeler.Q THEN
+
+            eRequestedGame := E_GameID.PEELING;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_PEELER_2026_10_25\FruitPeeler.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_PEELER_2026_10_25\';
+
+            sRequestedExeName := 'FruitPeeler.exe';
+
+
+        // ----------------------------------------------------
+        // GOLD MINER
+        // ----------------------------------------------------
+        ELSIF trigGoldMiner.Q THEN
+
+            eRequestedGame := E_GameID.GOLD_MINER;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\GoldMiner\GoldMiner.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\GoldMiner\';
+
+            sRequestedExeName := 'GoldMiner.exe';
+
+
+        // ----------------------------------------------------
+        // BALLOON
+        // ----------------------------------------------------
+        ELSIF trigBalloon.Q THEN
+
+            eRequestedGame := E_GameID.BALLOON;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\Balloon\Balloon.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\Balloon\';
+
+            sRequestedExeName := 'Balloon.exe';
+
+
+        // ----------------------------------------------------
+        // SNOW WIPER
+        // ----------------------------------------------------
+        ELSIF trigSnowWiper.Q THEN
+
+            eRequestedGame := E_GameID.SNOW_WIPER;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\SnowWiper\SnowWiper.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\MotivaGames\SnowWiper\';
+
+            sRequestedExeName := 'SnowWiper.exe';
+
+
+        // ----------------------------------------------------
+        // SORTER
+        // ----------------------------------------------------
+        ELSIF trigSorter.Q THEN
+
+            eRequestedGame := E_GameID.SORTER;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_Cargo_2026_10_24\Cargo_Sorter_Game.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_Cargo_2026_10_24\';
+
+            sRequestedExeName := 'Cargo_Sorter_Game.exe';
+
+
+              // ----------------------------------------------------
+        // FLOWER  (= Firefly Garden)
+        // ----------------------------------------------------
+        ELSIF trigFlower.Q THEN
+
+            eRequestedGame := E_GameID.FLOWER;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_Firefly_2026_11_06\Firefly Garden Game.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\Games\Peeler\EXE_Firefly_2026_11_06\';
+
+            sRequestedExeName := 'Firefly Garden Game.exe';
+
+
+
+        // ----------------------------------------------------
+        // CRAZY CAR
+        // ----------------------------------------------------
+        ELSIF trigCrazyCar.Q THEN
+
+            eRequestedGame := E_GameID.CRAZY_CAR;
+
+            sRequestedExePath :=
+                'C:\Users\hkhabiri\Desktop\Games\SIMON_2\EXE_CrazyCar\CrazyCar.exe';
+
+            sRequestedWorkingDir :=
+                'C:\Users\hkhabiri\Desktop\Games\SIMON_2\EXE_CrazyCar\';
+
+            sRequestedExeName := 'CrazyCar.exe';
+
+        END_IF;
+
+
+        // ----------------------------------------------------
+        // BEGIN SWITCH ONLY IF GAME IS DIFFERENT
+        // ----------------------------------------------------
+
+        IF eRequestedGame <> eActiveGame THEN
+
+            // Reset launch diagnostics
+            bError := FALSE;
+            nLastProcessErrId := 0;
+
+            // Disable old game's therapy control
+            // during the switching operation
+            eActiveGame := E_GameID.NONE;
+
+            // If an old executable is recorded,
+            // request its closure first
+            IF sCurrentExeName <> '' THEN
+
+                nState := 10;
+
+            ELSE
+
+                // No previous executable recorded
+                nState := 30;
+
+            END_IF;
+
+        END_IF;
+
+    END_IF;
+
+END_IF;
+
+
+// ============================================================
+// 3. DEFAULT PROCESS TRIGGERS
+//
+// Both NT_StartProcess blocks are called every PLC scan.
+// START is TRUE for just one PLC scan per request.
+// ============================================================
+
+bTriggerKill := FALSE;
+bTriggerStart := FALSE;
+
+
+// ============================================================
+// 4. WAIT TIMER
+//
+// The timer is executed every scan.
+// ============================================================
+
+tWaitAfterKill(
+    IN := (nState = 25),
+    PT := T#1S
+);
+
+
+// ============================================================
+// 5. GAME SWITCHING STATE MACHINE
+// ============================================================
+
+CASE nState OF
+
+    // --------------------------------------------------------
+    // STATE 0: IDLE
+    // --------------------------------------------------------
+    0:
+
+        // No action
+
+
+    // --------------------------------------------------------
+    // STATE 10: REQUEST CLOSURE OF CURRENT GAME
+    // --------------------------------------------------------
+    10:
+
+        // Windows taskkill arguments
+        // Example:
+        // /F /IM "First_Project.exe"
+
+        sKillCommand :=
+            CONCAT('/F /IM "', sCurrentExeName);
+
+        sKillCommand :=
+            CONCAT(sKillCommand, '"');
+
+        // One-scan rising-edge request
+        bTriggerKill := TRUE;
+
+        nState := 20;
+
+
+    // --------------------------------------------------------
+    // STATE 20: WAIT FOR CLOSE COMMAND ACKNOWLEDGEMENT
+    // --------------------------------------------------------
+    20:
+
+        IF NOT fbKillProcess.BUSY THEN
+
+            IF fbKillProcess.ERR THEN
+
+                // Windows did not accept launch
+                // of the taskkill command
+                bError := TRUE;
+
+                nLastProcessErrId :=
+                    fbKillProcess.ERRID;
+
+                // Do not launch another game
+                eRequestedGame := E_GameID.NONE;
+
+                nState := 0;
+
+            ELSE
+
+                // taskkill command was launched
+                // Allow time for it to execute
+                nState := 25;
+
+            END_IF;
+
+        END_IF;
+
+
+    // --------------------------------------------------------
+    // STATE 25: WAIT AFTER CLOSE REQUEST
+    // --------------------------------------------------------
+    25:
+
+        IF tWaitAfterKill.Q THEN
+
+            // Previous executable is assumed closed.
+            // Actual process exit is NOT verified here.
+
+            sCurrentExeName := '';
+
+            nState := 30;
+
+        END_IF;
+
+
+    // --------------------------------------------------------
+    // STATE 30: REQUEST NEW GAME LAUNCH
+    // --------------------------------------------------------
+    30:
+
+        sExePath := sRequestedExePath;
+
+        sWorkingDir := sRequestedWorkingDir;
+
+        // One-scan launch request
+        bTriggerStart := TRUE;
+
+        nState := 40;
+
+
+    // --------------------------------------------------------
+    // STATE 40: WAIT FOR LAUNCH ACKNOWLEDGEMENT
+    // --------------------------------------------------------
+    40:
+
+        IF NOT fbStartProcess.BUSY THEN
+
+            IF fbStartProcess.ERR THEN
+
+                bError := TRUE;
+
+                nLastProcessErrId :=
+                    fbStartProcess.ERRID;
+
+                eActiveGame := E_GameID.NONE;
+                eRequestedGame := E_GameID.NONE;
+
+                nState := 0;
+
+            ELSE
+
+                // Windows accepted the launch command
+
+                eActiveGame := eRequestedGame;
+
+                // Remember current game executable
+                // for the next switching operation
+
+                sCurrentExeName :=
+                    sRequestedExeName;
+
+                nState := 0;
+
+            END_IF;
+
+        END_IF;
+
+END_CASE;
+
+
+// ============================================================
+// 6. CALL WINDOWS CLOSE COMMAND
+//
+// Launch taskkill.exe directly, without cmd.exe.
+// /F = force process termination
+// /IM = executable image name
+// ============================================================
+
+fbKillProcess(
+    NETID     := '',
+    PATHSTR   := 'C:\Windows\System32\taskkill.exe',
+    DIRNAME   := 'C:\Windows\System32\',
+    COMNDLINE := sKillCommand,
+    START     := bTriggerKill,
+    TMOUT     := T#5S
+);
+
+
+// ============================================================
+// 7. LAUNCH SELECTED UNITY GAME ON MONITOR 3
+// ============================================================
+
+fbStartProcess(
+    NETID     := '',
+    PATHSTR   := sExePath,
+    DIRNAME   := sWorkingDir,
+    COMNDLINE := '-monitor 2',
+    START     := bTriggerStart,
+    TMOUT     := T#5S
+);
+
+
+// ============================================================
+// 8. MUTUAL EXCLUSION OF ALL HMI GAME BUTTONS
+//
+// Only the selected game stays TRUE.
+// All other GVL_HMI launch flags become FALSE.
+// ============================================================
+
+GVL_HMI.bLaunchGameSpongCmd :=
+    (eRequestedGame = E_GameID.PONG);
+
+GVL_HMI.bLaunchGamePeelerCmd :=
+    (eRequestedGame = E_GameID.PEELING);
+
+GVL_HMI.bLaunchGameGoldMiner :=
+    (eRequestedGame = E_GameID.GOLD_MINER);
+
+GVL_HMI.bLaunchGameBalloonAssesment :=
+    (eRequestedGame = E_GameID.BALLOON);
+
+GVL_HMI.bLaunchGameSnowWiper :=
+    (eRequestedGame = E_GameID.SNOW_WIPER);
+
+GVL_HMI.bLaunchGameSorter :=
+    (eRequestedGame = E_GameID.SORTER);
+
+GVL_HMI.bLaunchGameFlower :=
+    (eRequestedGame = E_GameID.FLOWER);
+
+GVL_HMI.bLaunchGameCrazyCar :=
+    (eRequestedGame = E_GameID.CRAZY_CAR);
+
+
+// ============================================================
+// 9. PROCESS STATUS
+// ============================================================
+
+bBusy :=
+    (nState <> 0)
+    OR fbStartProcess.BUSY
+    OR fbKillProcess.BUSY;
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_LaunchGame">
+      <LineId Id="784" Count="125" />
+      <LineId Id="1283" Count="13" />
+      <LineId Id="923" Count="288" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_ForceTorqueSensor" Id="{6bf5a42b-9c1c-463c-bc62-de0816edef78}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	ConfigParameter AT %Q* : DWORD;
+	RawFx AT %I* : INT;
+	RawFy AT %I* : INT;
+	RawFz AT %I* : INT;
+	RawMx AT %I* : INT;
+	RawMy AT %I* : INT;
+	RawMz AT %I* : INT;
+	
+	//
+	Fx_ActFTS : LREAL;    // N
+	Fy_ActFTS : LREAL;
+	Mz_ActFTS : LREAL;    //N.M
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

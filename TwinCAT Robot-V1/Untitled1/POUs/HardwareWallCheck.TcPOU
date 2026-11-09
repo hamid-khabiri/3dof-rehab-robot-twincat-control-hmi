@@ -1,0 +1,83 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="HardwareWallCheck" Id="{0245939c-6b2c-4e7b-8413-9ae90b48321b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK HardwareWallCheck
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+	HardwareActive : BOOL;
+END_VAR
+VAR
+	SwTheta1: BOOL;
+	SwTheta2: BOOL;
+	SwR1: BOOL;
+	SwR2: BOOL;
+	SwBeta1: BOOL;
+	SwBeta2: BOOL;
+	
+	// RTIG Function
+	RtrigSwTheta1: R_TRIG;
+	RtrigSwTheta2: R_TRIG;
+	RtrigSwR1: R_TRIG;
+	RtrigSwR2: R_TRIG;
+	RtrigSwBeta1: R_TRIG;
+	RtrigSwBeta2: R_TRIG;
+	Activeatedswitch : ARRAY[1..6] OF BOOL;
+	
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[SwTheta1 	 := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00020000) <> 0;  (* bit 0 *)
+SwTheta2     := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00010000) <> 0;  (* bit 1 *)
+SwR1    	 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00080000) <> 0;  (* bit 0 *)
+SwR2  		 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00040000) <> 0;  (* bit 1 *)
+SwBeta1      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00020000) <> 0;  (* bit 2 *)
+SwBeta2      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00010000) <> 0;  (* bit 3 *)
+
+RtrigSwBeta1(CLK :=SwBeta1);
+RtrigSwBeta2(CLK :=SwBeta2);
+RtrigSwR1(CLK :=SwR1);
+RtrigSwR2(CLK :=SwR2);
+RtrigSwTheta1(CLK :=SwTheta1);
+RtrigSwTheta2(CLK :=SwTheta2);
+//
+Activeatedswitch[1] := RtrigSwBeta1.Q;
+Activeatedswitch[2] := RtrigSwBeta2.Q;
+Activeatedswitch[3] := RtrigSwR1.Q;
+Activeatedswitch[4] := RtrigSwR2.Q;
+Activeatedswitch[5] := RtrigSwTheta1.Q;
+Activeatedswitch[6] := RtrigSwTheta2.Q;
+
+IF (GVL_hmi.HwCheckMicroswitchLinearMax AND Activeatedswitch[3]) OR (GVL_hmi.HwCheckMicroswitchLinearMin AND Activeatedswitch[4]) OR
+ (GVL_hmi.HwCheckMicroswitchRotationLeft AND Activeatedswitch[2]) OR (GVL_hmi.HwCheckMicroswitchRotationRight AND Activeatedswitch[1]) OR 
+ (GVL_HMI.HwCheckMicroswitchWristLeft AND Activeatedswitch[5]) OR (GVL_HMI.HwCheckMicroswitchWristRight AND Activeatedswitch[6])
+
+THEN
+
+ HardwareActive := TRUE;
+//ELSE
+	
+//	 HardwareActive := FALSE;
+END_IF
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="HardwareWallCheck">
+      <LineId Id="11" Count="4" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="43" Count="4" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="52" Count="4" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="58" Count="6" />
+      <LineId Id="68" Count="1" />
+      <LineId Id="65" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="42" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

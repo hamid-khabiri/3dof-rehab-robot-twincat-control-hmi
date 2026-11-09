@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_MessageStaus" Id="{7a131c16-bc53-4ccd-89c2-f28c2f0916c4}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	MessageStaus : STRING(255);	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

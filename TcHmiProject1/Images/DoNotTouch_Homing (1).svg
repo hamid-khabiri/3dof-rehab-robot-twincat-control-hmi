@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <radialGradient id="handGrad" cx="40%" cy="32%" r="80%">
+      <stop offset="0%" stop-color="#FFD9A8"/>
+      <stop offset="60%" stop-color="#F5B775"/>
+      <stop offset="100%" stop-color="#E89B4C"/>
+    </radialGradient>
+    <linearGradient id="navyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2C5282"/>
+      <stop offset="100%" stop-color="#1A365D"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#1A365D" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- outer pulsing rings (radar) - navy -->
+  <circle cx="200" cy="158" r="100" fill="none" stroke="#1A365D" stroke-width="3" opacity="0">
+    <animate attributeName="r" values="92;130" dur="2.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="200" cy="158" r="100" fill="none" stroke="#2C5282" stroke-width="3" opacity="0">
+    <animate attributeName="r" values="92;130" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+  </circle>
+
+  <g transform="translate(200,158)" filter="url(#softShadow)">
+    <g>
+      <animateTransform attributeName="transform" type="scale" values="1;1.05;1" dur="1.6s" repeatCount="indefinite"/>
+
+      <!-- white disc behind hand -->
+      <circle cx="0" cy="0" r="88" fill="#FFFFFF"/>
+
+      <!-- STOP HAND -->
+      <g transform="translate(0,4)">
+        <path d="M -28 14
+                 C -32 2 -30 -6 -24 -6
+                 C -20 -6 -19 -2 -19 2
+                 L -19 -30
+                 C -19 -38 -7 -38 -7 -30
+                 L -7 -2
+                 L -7 -38
+                 C -7 -47 5 -47 5 -38
+                 L 5 -2
+                 L 5 -36
+                 C 5 -45 17 -45 17 -36
+                 L 17 -2
+                 L 17 -28
+                 C 17 -36 29 -36 29 -28
+                 L 29 14
+                 C 29 40 14 50 -2 50
+                 C -14 50 -23 40 -28 28
+                 Z"
+              fill="url(#handGrad)" stroke="#D98B3E" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M -28 14 C -38 4 -34 -8 -28 -6 C -24 -4 -22 2 -19 6 Z"
+              fill="url(#handGrad)" stroke="#D98B3E" stroke-width="2.5" stroke-linejoin="round"/>
+        <g stroke="#D98B3E" stroke-width="1.5" opacity="0.5" fill="none" stroke-linecap="round">
+          <line x1="-7" y1="-28" x2="-7" y2="6"/>
+          <line x1="5" y1="-34" x2="5" y2="6"/>
+          <line x1="17" y1="-30" x2="17" y2="6"/>
+        </g>
+      </g>
+
+      <!-- navy prohibition circle + slash -->
+      <circle cx="0" cy="0" r="74" fill="none" stroke="url(#navyGrad)" stroke-width="11"/>
+      <line x1="-52" y1="-52" x2="52" y2="52" stroke="url(#navyGrad)" stroke-width="11" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <text x="200" y="312" font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="34" fill="#1A365D" text-anchor="middle" letter-spacing="0.02em">DO NOT TOUCH</text>
+  <text x="200" y="344" font-family="Segoe UI, system-ui, sans-serif" font-weight="600" font-size="18" fill="#4A5568" text-anchor="middle">Robot is homing</text>
+
+  <g fill="#1A365D">
+    <circle cx="180" cy="368" r="4.5"><animate attributeName="opacity" values="1;0.2;1" dur="1.2s" begin="0s" repeatCount="indefinite"/></circle>
+    <circle cx="200" cy="368" r="4.5"><animate attributeName="opacity" values="1;0.2;1" dur="1.2s" begin="0.2s" repeatCount="indefinite"/></circle>
+    <circle cx="220" cy="368" r="4.5"><animate attributeName="opacity" values="1;0.2;1" dur="1.2s" begin="0.4s" repeatCount="indefinite"/></circle>
+  </g>
+</svg>

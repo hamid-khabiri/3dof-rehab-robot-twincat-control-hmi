@@ -1,0 +1,325 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_RobotKinematics" Id="{420dbae5-3c36-45d6-96f4-442c24af5a2f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RobotKinematics
+VAR_INPUT
+	JointData_INPUT : ST_JointState;
+	CartesianData_INPUT : ST_CartesianState ;
+
+END_VAR
+VAR_OUTPUT
+	JointData_Transed : ST_JointState;
+	CartesianData_Transed : ST_CartesianState;
+	Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic: ST_CartesianPose ;
+	AdditionalPOSE : ST_CartesianAdditionalParametes;
+END_VAR
+VAR
+	//JointPose : ST_JointPose;
+//	ActBeta : LREAL;
+	
+//	ActR: LREAL;
+ // Jacobian matrix
+    J11 : LREAL;
+    J12 : LREAL;
+    J13 : LREAL;
+
+    J21 : LREAL;
+    J22 : LREAL;
+    J23 : LREAL;
+
+    J31 : LREAL;
+    J32 : LREAL;
+    J33 : LREAL;
+
+	 
+	
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+ForwardKinematics();
+
+
+CalculateJacobian();
+
+]]></ST>
+    </Implementation>
+    <Method Name="CalculateJacobian" Id="{23effbdd-ae5f-4c43-a22e-662d940ada36}">
+      <Declaration><![CDATA[METHOD PUBLIC CalculateJacobian 
+VAR_INPUT
+//	 ActBeta : LREAL;
+//	 ActR : LREAL;
+	// JointVelo : ST_JointVelocity;
+END_VAR
+
+VAR
+    // Local Variables
+    BetaRad : LREAL;
+    R_mm    : LREAL;
+    PI_180    : LREAL := 0.0174532925199433; 
+    
+
+END_VAR
+VAR_OUTPUT
+	
+	
+	//CartesianVelocity : ST_CartesianVelocity;
+	
+	
+	
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[BetaRad := AdditionalPOSE.BetaIncremental * PI_180; // Convert Degree to Radian
+R_mm    := AdditionalPOSE.RIncremental;
+
+
+
+J11 := -R_mm * GVL_ConstantCoefficent.K1 * PI_180 * COS(BetaRad); 
+J12 :=  GVL_ConstantCoefficent.K2 * SIN(BetaRad);
+J13 := -GVL_ConstantCoefficent.K2 * SIN(BetaRad);
+
+// Row 2: How Y changes with motors
+J21 :=  R_mm * GVL_ConstantCoefficent.K1 * PI_180 * SIN(BetaRad);
+J22 :=  GVL_ConstantCoefficent.K2 * COS(BetaRad);
+J23 := -GVL_ConstantCoefficent.K2 * COS(BetaRad);
+
+// Row 3: How Theta (Wrist) changes with motors
+J31 := 0.0;
+J32 := -GVL_ConstantCoefficent.K3 / 2.0;
+J33 := -GVL_ConstantCoefficent.K3 / 2.0;
+
+CartesianData_Transed.Velocity.Vx := J11* JointData_INPUT.Velocity.q1_dot + J12* JointData_INPUT.Velocity.q2_dot + J13* JointData_INPUT.Velocity.q3_dot;
+CartesianData_Transed.Velocity.Vy := J21* JointData_INPUT.Velocity.q1_dot + J22* JointData_INPUT.Velocity.q2_dot + J23* JointData_INPUT.Velocity.q3_dot;
+CartesianData_Transed.Velocity.Vtheta := J31* JointData_INPUT.Velocity.q1_dot + J32* JointData_INPUT.Velocity.q2_dot + J33* JointData_INPUT.Velocity.q3_dot;
+
+
+// JacobianTrans
+//JointData_Transed.Torque.M1 := J11* CartesianData_INPUT.Force.Fx + J21* CartesianData_INPUT.Force.Fy+ J31* CartesianData_INPUT.Force.Mtheta;
+//JointData_Transed.Torque.M2 := J12* CartesianData_INPUT.Force.Fx + J22* CartesianData_INPUT.Force.Fy+ J32* CartesianData_INPUT.Force.Mtheta;
+//JointData_Transed.Torque.M3 := J13* CartesianData_INPUT.Force.Fx + J23* CartesianData_INPUT.Force.Fy+ J33* CartesianData_INPUT.Force.Mtheta;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="CartesianForceToTorque" Id="{21619f86-0c43-4df2-bd7a-178dd01ee750}">
+      <Declaration><![CDATA[METHOD PUBLIC CartesianForceToTorque
+VAR_INPUT
+    Force : ST_CartesianForces;
+END_VAR
+
+VAR_OUTPUT
+    Torque : ST_JointTorque;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[Torque.M1 :=
+      J11 * Force.Fx
+    + J21 * Force.Fy
+    + J31 * Force.Mtheta;
+
+Torque.M2 :=
+      J12 * Force.Fx
+    + J22 * Force.Fy
+    + J32 * Force.Mtheta;
+
+Torque.M3 :=
+      J13 * Force.Fx
+    + J23 * Force.Fy
+    + J33 * Force.Mtheta;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="ForwardKinematics" Id="{9c8569c1-2b10-4936-b400-051cceee0b62}">
+      <Declaration><![CDATA[METHOD PUBLIC ForwardKinematics : BOOL
+VAR_INPUT
+//	JointPose : ST_JointPose;
+END_VAR
+
+VAR
+Theta : LREAL;
+	R_Dir : LREAL;
+	X_Dir : LREAL;	
+	Y_Dir : LREAL;
+	Beta : LREAL;
+	X0: LREAL;
+	Y0: LREAL;
+	X1: LREAL;
+	LineLength: INT := 5;
+	Y1: LREAL;
+	
+	// Test Visualization
+	A : INT := 1000;
+	B : INT := 1000;
+	C : INT;
+	D: LREAL;
+	E : LREAL;
+	
+	R_Visu: INT;
+	Theta_Visu: INT;
+	X_Visu: INT;
+	Y_Visu: INT;
+	X_Dir_Abs: LREAL;
+	Y_Dir_Abs: LREAL;
+	R_Dir_Abs: LREAL;
+	WristAngle: LREAL;
+	WristAngle_Abs: LREAL;
+	
+	BetaFromAbsolute : LREAL;
+	ThetaFromAbsolute : LREAL;
+	LinearFromAbsolute : LREAL;
+	
+	END_VAR
+VAR_OUTPUT
+	//CartesianPoseObtainedFromForwardKinematic : ST_CartesianPose;
+	//	Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic: ST_CartesianPose ; 
+	//CartesianAdditionalPose: ST_CartesianAdditionalParametes ;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+// Forward Kinematic From Incremental Encoders
+
+R_Dir := 464.0 -  GVL_ConstantCoefficent.K2*(JointData_INPUT.Position.q2-JointData_INPUT.Position.q3-GVL_HomingResult.gHoming.HomePos_R);   // Unit : mm 
+Theta := -GVL_ConstantCoefficent.K3*(JointData_INPUT.Position.q2+JointData_INPUT.Position.q3-GVL_HomingResult.gHoming.HomePos_Theta)/2.0; // Unid: Degree
+Beta := GVL_ConstantCoefficent.K1*(JointData_INPUT.Position.q1-GVL_HomingResult.gHoming.HomePos_Beta);
+
+X_Dir := R_Dir * (SIN(- Beta * (PI / 180.0)));   // 464 is maximum R
+Y_Dir := 464 -(R_Dir  * (COS(Beta * (PI / 180.0))));
+Y_Dir := 464.0 -(R_Dir  * (COS(Beta * (PI / 180.0))));
+WristAngle := Theta;
+
+CartesianData_Transed.Position.X := X_Dir;
+CartesianData_Transed.Position.Y := Y_Dir;
+CartesianData_Transed.Position.Theta := WristAngle;
+
+// NORMALIZATION OF INCREMENTAL DATA
+// 1. Normalize Y_Dir (0-370mm) to Percentage (0-100)
+// We check for negative values just in case calibration is slightly off
+IF Y_Dir < 0.0 THEN 
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.Y := 0.0;
+ELSIF Y_Dir > 370.0 THEN 
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.Y := 100.0;
+ELSE
+    // The main formula: (Current / Max) * 100
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.Y := (Y_Dir / 370.0) * 100.0;
+END_IF
+
+IF X_Dir < -410.0 THEN 
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.X := -100.0;
+ELSIF X_Dir > 410.0 THEN 
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.X := 100.0;
+ELSE
+    // The main formula: (Current / Max) * 100
+    Cartesian_PERCENTAGE_PoseObtainedFromForwardKinematic.X := (X_Dir / 410.0) * 100.0;
+END_IF
+
+
+(*
+GVL_EndeffectorPosition.R_Dir := 464.0 -  GVL_ConstantCoefficent.K2*(JointPose.q2-JointPose.q3-GVL_HomingResult.gHoming.HomePos_R);   // Unit : mm 
+Theta := -GVL_ConstantCoefficent.K3*(JointPose.q2+JointPose.q3-GVL_HomingResult.gHoming.HomePos_Theta)/2.0; // Unid: Degree
+CartesianAdditionalPose.BetaIncremental := GVL_ConstantCoefficent.K1*(JointPose.q1-GVL_HomingResult.gHoming.HomePos_Beta);
+
+CartesianPose.X := R_Dir * (SIN(- Beta * (PI / 180.0)));   // 464 is maximum R
+CartesianPose.Y := 464.0 -(R_Dir  * (COS(Beta * (PI / 180.0))));
+CartesianPose.Theta := Theta;
+
+*)
+
+// Absolute Encoder
+
+
+
+
+BetaFromAbsolute :=  (TO_LREAL(GVL_AbsoluteEncoders.AbsoluteBetaPosition) / 16384.0) * 360.0;
+LinearFromAbsolute :=  (TO_LREAL(GVL_AbsoluteEncoders.AbsoluteLinearPosition) / 4096.0);  //mm
+ThetaFromAbsolute :=  (TO_LREAL(GVL_AbsoluteEncoders.AbsoluteTetaPosition) / 16384.0) * 360.0;  // This is wrist Angle
+R_Dir_Abs := 464.0 -(LinearFromAbsolute + 402.7); // 464 comes from solidworks , 402.7 comes from absoute encodere date when robot placed in home position, if there is a about1-2 mm error between what i read from incremental and absolute can have a roote here, but this error should be constant, if during motion the numbers changed is related your code or shows slipping of cable!
+
+AdditionalPOSE.X_Dir_Abs := R_Dir_Abs * (SIN((-BetaFromAbsolute - 114.16) * (PI / 180.0)));   // 464 is maximum R, 114.16 is shifting number I read whem robot placed in home position 
+AdditionalPOSE.Y_Dir_Abs := 464.0 -(R_Dir_Abs  * (COS((-BetaFromAbsolute - 114.16) * (PI / 180.0))));
+AdditionalPOSE.WristAngle_Abs := ThetaFromAbsolute;
+AdditionalPOSE.RIncremental := R_Dir ;
+AdditionalPOSE.BetaIncremental := Beta;
+
+
+
+
+
+
+(*   Between * hidden because it is related to games and visualization
+
+//PONG GAME
+// 1. Normalize Y_Dir (0-370mm) to Percentage (0-100)
+// We check for negative values just in case calibration is slightly off
+IF Y_Dir < 0 THEN 
+    GVL_GamePong.MyRobotY := 0;
+ELSIF Y_Dir > 370 THEN 
+    GVL_GamePong.MyRobotY := 100;
+ELSE
+    // The main formula: (Current / Max) * 100
+    GVL_GamePong.MyRobotY := TO_REAL((Y_Dir / 370.0) * 100.0);
+END_IF
+
+
+
+
+// Wrist Rotation visualization
+
+Theta_Visu := TO_INT(Theta) + TO_INT(Beta);
+
+// linear of visualizartion
+*)
+
+//E :=  - (R_Dir*10);
+//R_Visu := TO_INT(E);
+GVL_HMI.EndeffectorPositionPixcelUnit_X := TO_INT(CartesianData_Transed.Position.X * (245.0/375.0))+500-7;
+GVL_HMI.EndeffectorPositionPixcelUnit_Y := -TO_INT(CartesianData_Transed.Position.Y * ((245.0/375.0)))+687-7;
+GVL_HMI.EndeffectorPositionPixcelUnit_Theta := WristAngle;
+
+]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_RobotKinematics">
+      <LineId Id="170" Count="0" />
+      <LineId Id="161" Count="0" />
+      <LineId Id="172" Count="0" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="194" Count="0" />
+      <LineId Id="193" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotKinematics.CalculateJacobian">
+      <LineId Id="32" Count="0" />
+      <LineId Id="28" Count="3" />
+      <LineId Id="6" Count="11" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="46" Count="0" />
+      <LineId Id="50" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="78" Count="2" />
+    </LineIds>
+    <LineIds Name="FB_RobotKinematics.CartesianForceToTorque">
+      <LineId Id="13" Count="12" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotKinematics.ForwardKinematics">
+      <LineId Id="6" Count="8" />
+      <LineId Id="16" Count="5" />
+      <LineId Id="128" Count="0" />
+      <LineId Id="127" Count="0" />
+      <LineId Id="130" Count="8" />
+      <LineId Id="129" Count="0" />
+      <LineId Id="126" Count="0" />
+      <LineId Id="139" Count="6" />
+      <LineId Id="124" Count="0" />
+      <LineId Id="123" Count="0" />
+      <LineId Id="22" Count="24" />
+      <LineId Id="147" Count="1" />
+      <LineId Id="146" Count="0" />
+      <LineId Id="47" Count="27" />
+      <LineId Id="192" Count="0" />
+      <LineId Id="75" Count="3" />
+      <LineId Id="237" Count="0" />
+      <LineId Id="239" Count="0" />
+      <LineId Id="238" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

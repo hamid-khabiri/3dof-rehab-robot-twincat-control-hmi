@@ -1,0 +1,395 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_CrazyCarGame" Id="{669f62e4-9b0e-4175-b365-97a30bbca471}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_CrazyCarGame
+
+VAR_INPUT
+    bEnable                   : BOOL;
+    stCartesianPosePercentage : ST_CartesianPose;
+    fWristAngleDeg            : LREAL;
+    CartesianVtheta           : LREAL;
+    CartesianMtheta           : LREAL;
+END_VAR
+
+VAR_OUTPUT
+    stJointTargetTorque : ST_JointTorque;
+END_VAR
+
+VAR
+    // =====================================================
+    // UNITY COMMUNICATION
+    // =====================================================
+
+    stToUnity   : ST_CrazyCarToUnity;
+    stFromUnity : ST_UnityToCrazyCar;
+
+
+    // =====================================================
+    // RESISTANCE LEVELS
+    // =====================================================
+
+    TorqueTaxi  : LREAL := 0.0;
+    TorqueVan   : LREAL := 20.0;
+    TorqueTruck : LREAL := 40.0;
+
+    TorqueSign  : LREAL := 1.0;
+
+    fTorque : LREAL := 0.0;
+
+
+    // =====================================================
+    // VELOCITY FILTER
+    // =====================================================
+
+    fVthetaFiltered : LREAL := 0.0;
+
+    fFilterTime : LREAL := 0.015;
+
+    fTaskCycleTime : LREAL := 0.01;
+
+
+    // =====================================================
+    // VELOCITY DEAD ZONE AND TRANSITION
+    //
+    // Assumes CartesianVtheta is in deg/s
+    // =====================================================
+
+    fVelocityDeadband : LREAL := 10.0;
+
+    fVelocityFull : LREAL := 30.0;
+
+
+    // =====================================================
+    // SMOOTH RESISTANCE
+    // =====================================================
+
+    fVelocityMagnitude : LREAL := 0.0;
+
+    fVelocityFactor : LREAL := 0.0;
+
+    fSmoothFactor : LREAL := 0.0;
+
+    fTorqueTarget : LREAL := 0.0;
+
+    fTorqueCommand : LREAL := 0.0;
+
+
+    // =====================================================
+    // APPLICATION TORQUE SLEW LIMIT
+    //
+    // Units must match the game torque command per second.
+    // =====================================================
+
+    fTorqueRateLimit : LREAL := 100.0;
+
+    fMaxTorqueStep : LREAL := 0.0;
+
+    fTorqueDifference : LREAL := 0.0;
+
+
+    // =====================================================
+    // INITIAL BENCH-TEST LIMITS
+    //
+    // Keep motor output disabled while validating the logic.
+    // fMaxGameTorque is an experimental command bound,
+    // NOT a validated safe human-interaction torque.
+    // =====================================================
+
+    bEnableResistanceOutput : BOOL := FALSE;
+
+    fMaxGameTorque : LREAL :=40.0;
+
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(************************************************************
+    CRAZY CAR GAME - CONTINUOUS SMOOTH RESISTANCE
+
+    Unity status:
+        0 = Menu / Popup
+        1 = Taxi
+        2 = Van
+        3 = Truck
+
+    Objectives:
+        1. Zero resistance near stationary velocity
+        2. Smooth resistance transition
+        3. Approximately constant resistance during motion
+        4. Avoid binary torque switching
+        5. Limit the commanded torque rate
+*************************************************************)
+
+
+// ==========================================================
+// 1. DEFAULT OUTPUTS
+// ==========================================================
+
+stJointTargetTorque.M1 := 0.0;
+stJointTargetTorque.M2 := 0.0;
+stJointTargetTorque.M3 := 0.0;
+
+stToUnity.GameIsActive := FALSE;
+
+fTorque := 0.0;
+fTorqueTarget := 0.0;
+
+
+// ==========================================================
+// 2. CHECK GAME ENABLE
+// ==========================================================
+
+IF bEnable AND NOT stFromUnity.bGameClosed THEN
+
+    // Send data to Unity
+
+    stToUnity.fY :=
+        LREAL_TO_REAL(stCartesianPosePercentage.Y);
+
+    stToUnity.fWristAngle :=
+        LREAL_TO_REAL(fWristAngleDeg);
+
+    stToUnity.GameIsActive := TRUE;
+
+
+    // ======================================================
+    // 3. READ VEHICLE RESISTANCE
+    // ======================================================
+
+    CASE stFromUnity.nGameStatus OF
+
+        1:
+            fTorque := TorqueTaxi;
+
+        2:
+            fTorque := TorqueVan;
+
+        3:
+            fTorque := TorqueTruck;
+
+        ELSE
+            fTorque := 0.0;
+
+    END_CASE;
+
+
+    // ======================================================
+    // 4. FILTER WRIST VELOCITY
+    // ======================================================
+
+    IF (fTaskCycleTime > 0.0)
+       AND (fFilterTime >= 0.0) THEN
+
+        fVthetaFiltered :=
+            fVthetaFiltered
+            +
+            (
+                fTaskCycleTime /
+                (fFilterTime + fTaskCycleTime)
+            )
+            *
+            (CartesianVtheta - fVthetaFiltered);
+
+    ELSE
+
+        fVthetaFiltered := 0.0;
+
+    END_IF;
+
+
+    // ======================================================
+    // 5. CALCULATE VELOCITY MAGNITUDE
+    // ======================================================
+
+    fVelocityMagnitude := ABS(fVthetaFiltered);
+
+
+    // ======================================================
+    // 6. CALCULATE CONTINUOUS VELOCITY FACTOR
+    //
+    // Dead zone:          Factor = 0
+    // Transition region:  Factor = 0..1
+    // Full movement:      Factor = 1
+    // ======================================================
+
+    fVelocityFactor := 0.0;
+
+    IF fVelocityFull > fVelocityDeadband THEN
+
+        IF fVelocityMagnitude <= fVelocityDeadband THEN
+
+            fVelocityFactor := 0.0;
+
+        ELSIF fVelocityMagnitude >= fVelocityFull THEN
+
+            fVelocityFactor := 1.0;
+
+        ELSE
+
+            fVelocityFactor :=
+                (fVelocityMagnitude - fVelocityDeadband)
+                /
+                (fVelocityFull - fVelocityDeadband);
+
+        END_IF;
+
+    END_IF;
+
+
+    // ======================================================
+    // 7. SMOOTHSTEP FUNCTION
+    //
+    // Smooth transition from 0 to 1.
+    //
+    // f(x) = 3*x*x - 2*x*x*x
+    //
+    // This avoids an abrupt slope change at the
+    // beginning and end of the transition region.
+    // ======================================================
+
+    fSmoothFactor :=
+        fVelocityFactor
+        *
+        fVelocityFactor
+        *
+        (3.0 - 2.0 * fVelocityFactor);
+
+
+    // ======================================================
+    // 8. CALCULATE TARGET RESISTANCE
+    //
+    // Preserve your existing motor sign convention.
+    // Verify that the physical wrist torque opposes motion.
+    // ======================================================
+
+    IF fVthetaFiltered > fVelocityDeadband THEN
+
+        fTorqueTarget :=
+            TorqueSign
+            *
+            fTorque
+            *
+            fSmoothFactor;
+
+    ELSIF fVthetaFiltered < -fVelocityDeadband THEN
+
+        fTorqueTarget :=
+            -TorqueSign
+            *
+            fTorque
+            *
+            fSmoothFactor;
+
+    ELSE
+
+        fTorqueTarget := 0.0;
+
+    END_IF;
+
+
+    // ======================================================
+    // 9. LIMIT GAME TORQUE MAGNITUDE
+    //
+    // Experimental bench-test limit.
+    // ======================================================
+
+    IF bEnableResistanceOutput
+       AND (fMaxGameTorque > 0.0) THEN
+
+        fTorqueTarget :=
+            MAX(
+                -fMaxGameTorque,
+                MIN(fMaxGameTorque, fTorqueTarget)
+            );
+
+    ELSE
+
+        fTorqueTarget := 0.0;
+
+    END_IF;
+
+
+    // ======================================================
+    // 10. APPLICATION-LEVEL TORQUE SLEW LIMIT
+    //
+    // Prevent large command changes within one PLC cycle.
+    // ======================================================
+
+    fMaxTorqueStep :=
+        MAX(0.0, fTorqueRateLimit)
+        *
+        MAX(0.0, fTaskCycleTime);
+
+    fTorqueDifference :=
+        fTorqueTarget - fTorqueCommand;
+
+
+    IF fTorqueDifference > fMaxTorqueStep THEN
+
+        fTorqueCommand :=
+            fTorqueCommand + fMaxTorqueStep;
+
+    ELSIF fTorqueDifference < -fMaxTorqueStep THEN
+
+        fTorqueCommand :=
+            fTorqueCommand - fMaxTorqueStep;
+
+    ELSE
+
+        fTorqueCommand := fTorqueTarget;
+
+    END_IF;
+
+
+    // ======================================================
+    // 11. TRANSFER TORQUE TO WRIST MOTORS
+    // ======================================================
+
+    IF bEnableResistanceOutput THEN
+
+        stJointTargetTorque.M2 := fTorqueCommand;
+        stJointTargetTorque.M3 := fTorqueCommand;
+
+    ELSE
+
+        stJointTargetTorque.M2 := 0.0;
+        stJointTargetTorque.M3 := 0.0;
+
+        fTorqueCommand := 0.0;
+
+    END_IF;
+
+
+ELSE
+
+    // ======================================================
+    // 12. GAME DISABLED OR CLOSED
+    // ======================================================
+
+    IF bEnable AND stFromUnity.bGameClosed THEN
+
+        GVL_HMI.bLaunchGameCrazyCar := FALSE;
+
+    END_IF;
+
+
+    stToUnity.GameIsActive := FALSE;
+
+    fTorque := 0.0;
+    fTorqueTarget := 0.0;
+    fTorqueCommand := 0.0;
+
+    fVthetaFiltered := 0.0;
+
+    fVelocityMagnitude := 0.0;
+    fVelocityFactor := 0.0;
+    fSmoothFactor := 0.0;
+
+    fTorqueDifference := 0.0;
+
+END_IF;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_CrazyCarGame">
+      <LineId Id="1490" Count="283" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_UnityToSorter" Id="{779f2c89-ab03-4357-ac10-5cb97efe94fc}">
+    <Declaration><![CDATA[TYPE ST_UnityToSorter :
+STRUCT
+	bGameClosed : BOOL;   // TRUE = Unity game closed
+    nGameStatus : INT;    // 0 = not playing, 1 = light, 2 = medium, 3 = heavy
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

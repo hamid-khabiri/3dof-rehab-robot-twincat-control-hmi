@@ -1,0 +1,85 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="MicroswitchCheck" Id="{1c0e4854-5048-4d36-942b-b7de663fad62}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK MicroswitchCheck
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+	SwTheta1: BOOL;
+	SwTheta2: BOOL;
+	SwR1: BOOL;
+	SwR2: BOOL;
+	SwBeta1: BOOL;
+	SwBeta2: BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[SwTheta1 	 := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00020000) <> 0;  (* bit 0 *)
+SwTheta2     := (GVL_MicroSwitch.dwMicroSwitchDriverA AND 16#00010000) <> 0;  (* bit 1 *)
+SwR1    	 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00080000) <> 0;  (* bit 0 *)
+SwR2  		 := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00040000) <> 0;  (* bit 1 *)
+SwBeta1      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00020000) <> 0;  (* bit 2 *)
+SwBeta2      := (GVL_MicroSwitch.dwMicroSwitchDriverB AND 16#00010000) <> 0;  (* bit 3 *)
+
+IF SwTheta1 THEN
+GVL_HMI.CheckMicroswitchWristLeft := TRUE;
+	
+END_IF
+
+IF SwTheta2 THEN
+GVL_HMI.CheckMicroswitchWristRight := TRUE;
+	
+END_IF
+
+IF SwR1 THEN
+GVL_HMI.CheckMicroswitchLinearMax := TRUE;
+	
+END_IF
+
+IF SwR2 THEN
+GVL_HMI.CheckMicroswitchLinearMin := TRUE;
+	
+END_IF
+
+IF SwBeta1 THEN
+GVL_HMI.CheckMicroswitchRotationRight := TRUE;
+	
+END_IF
+
+IF SwBeta2 THEN
+GVL_HMI.CheckMicroswitchRotationLeft := TRUE;
+	
+END_IF
+
+IF GVL_HMI.CheckMicroswitchWristLeft AND GVL_HMI.CheckMicroswitchWristRight AND GVL_HMI.CheckMicroswitchLinearMax AND GVL_HMI.CheckMicroswitchLinearMin AND GVL_HMI.CheckMicroswitchRotationRight AND GVL_HMI.CheckMicroswitchRotationLeft THEN
+GVL_HMI.ContinueToHoming := TRUE;
+
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="MicroswitchCheck">
+      <LineId Id="10" Count="4" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="25" Count="0" />
+      <LineId Id="23" Count="1" />
+      <LineId Id="35" Count="3" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="40" Count="2" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="44" Count="3" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="49" Count="3" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="55" Count="3" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="74" Count="1" />
+      <LineId Id="73" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

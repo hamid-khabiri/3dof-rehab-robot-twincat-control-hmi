@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_DynamicsCompensator" Id="{c7dffd1a-8c9d-425b-b043-987ef961618e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_DynamicsCompensator
+VAR_INPUT
+	// 1. Feature Flags (Explicit and isolated)
+    EnableFrictionComp : BOOL;       
+    EnableInertiaComp  : BOOL;
+	
+	// Kinematic data
+	
+END_VAR
+VAR_OUTPUT
+	TotalCompTorque    : ST_JointTorque;
+END_VAR
+VAR
+	CalculatedFriction : ST_JointTorque;
+    CalculatedInertia  : ST_JointTorque;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// 1. FRICTION COMPENSATION
+IF EnableFrictionComp THEN
+    //
+ELSE
+    CalculatedFriction.M1 := 0.0;
+    CalculatedFriction.M2 := 0.0;
+    CalculatedFriction.M3 := 0.0;
+END_IF
+
+// 2. INERTIA COMPENSATION
+IF EnableInertiaComp THEN
+    //
+ELSE
+    CalculatedInertia.M1 := 0.0;
+    CalculatedInertia.M2 := 0.0;
+    CalculatedInertia.M3 := 0.0;
+END_IF
+
+// 3. COMBINE FOR OUTPUT
+TotalCompTorque.M1 := CalculatedFriction.M1 + CalculatedInertia.M1;
+TotalCompTorque.M2 := CalculatedFriction.M2 + CalculatedInertia.M2;
+TotalCompTorque.M3 := CalculatedFriction.M3 + CalculatedInertia.M3;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_DynamicsCompensator">
+      <LineId Id="19" Count="1" />
+      <LineId Id="23" Count="18" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

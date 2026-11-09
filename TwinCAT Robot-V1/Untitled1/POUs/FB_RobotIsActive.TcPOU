@@ -1,0 +1,635 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_RobotIsActive" Id="{c3c941ef-52b4-44a7-a489-5b194928ba2d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RobotIsActive
+VAR_INPUT
+	
+
+
+END_VAR
+VAR_OUTPUT
+	bBusy         : BOOL;
+    bDone         : BOOL;
+    // Final CSV commands to the drives
+    lrTargetVelX  : LREAL; 
+    lrTargetVelY  : LREAL;
+    lrTargetVelTheta : LREAL;
+	bActiveModeIsDone : BOOL;
+END_VAR
+VAR
+	
+(* Variables for UpdatePathPlanning *)
+// Segment Lengths
+    lrL1, lrL2, lrL3 : LREAL;
+    
+    // Direction Unit Vectors
+    lrDX1, lrDY1, lrDTh1 : LREAL;
+    lrDX2, lrDY2, lrDTh2 : LREAL;
+    lrDX3, lrDY3, lrDTh3 : LREAL;
+    
+    // Feedforward Velocity Outputs
+    lrVx_FF, lrVy_FF, lrVTh_FF : LREAL;
+	
+	iCurrentSegment : INT; // 10 for A-B, 20 for B-C, 30 for C-A
+(*----------------------------------------*)
+
+
+
+	
+    stPointA      : ARRAY[1..3] OF LREAL := [100,100,0]; // [X, Y, Theta]
+    stPointB      : ARRAY[1..3] OF LREAL := [-200,200,0];
+    stPointC      : ARRAY[1..3] OF LREAL := [100,200,0];
+    lrVmax        : LREAL := 10 ; // Max Velocity (mm/s)
+    lrAcc         : LREAL := 20 ; // Symmetrical Acc/Dec (mm/s^2)
+	
+	// Feedback from Motors (mapped from EPOS4 PDOs)
+	// fbKinematic : FB_Kinematic;
+	
+    lrActX        : LREAL ; 
+    lrActY        : LREAL ;
+    lrActTheta    : LREAL ;
+ 	lrActR    : LREAL ;
+
+
+
+iState        : INT;    // State Machine index
+    fbWaitTimer   : TON;    // 1-second pause timer
+    lrS_T         : LREAL;  // Current path distance
+    lrS_dot       : LREAL;  // Current path velocity (Feedforward)
+    
+    // Internal setpoints calculated each cycle
+    stCurrentSet  : ARRAY[1..3] OF LREAL; // Target [X, Y, Theta]
+    
+  
+   
+	(*PID Controller Using Tc2_ControllerToolbox*)
+	
+	// PID Instances
+    fbPidX, fbPidY, fbPidTheta : FB_CTRL_PID;
+    
+    // Parameter Structures (Required for FB_CTRL_PID)
+    stParamsX, stParamsY, stParamsTheta : ST_CTRL_PID_PARAMS;
+    
+    // The mode variable to turn them on/off
+    eMode : E_CTRL_MODE;
+	
+	
+	// Final Control Outputs (Sent to Jacobian/Motors)
+    lrVx_Total    : LREAL;
+    lrVy_Total    : LREAL;
+    lrVTh_Total   : LREAL;
+
+	
+	(*-----------------------------------*)
+	
+	// Final joint targets to be sent to motors
+    JointVelTarget : ARRAY[1..3] OF LREAL;
+	
+	
+	
+	
+	// Triangle Path
+	
+	State : INT;
+	X_S: LREAL;
+	S_T: LREAL; // Current position setpoint
+	dx: LREAL;
+	dy: LREAL;
+	L: LREAL;
+	Y_S: LREAL;
+	dx1: LREAL;
+	dy1: LREAL;
+	L1: LREAL;
+	dx2: LREAL;
+	dy2: LREAL;
+	L2: LREAL;
+	dx3: LREAL;
+	dy3: LREAL;
+	L3: LREAL;
+	dTh1: LREAL;
+	dTh2: LREAL;
+	dTh3: LREAL;
+	Theta_S: LREAL;
+	
+	// S(t) definition
+	 
+    S_dot    : LREAL; // Current velocity (Feedforward)
+	lrL_Target: LREAL;
+	bSegmentDone: BOOL;
+	//MessageStaus : STRING(255); 
+	
+	bAtPointA: BOOL;
+	lrApproachStartX: LREAL;
+	lrApproachStartY: LREAL;
+	lrApproachStartTheta: LREAL;
+	lrDX_App: LREAL;
+	lrDY_App: LREAL;
+	lrDTh_App: LREAL;
+	lrL_App: LREAL;
+	bWaitEnable: BOOL := FALSE;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(*
+fbKinematic(
+    q1 := GVL_RobotData.Q1_Actual, 
+    q2 := GVL_RobotData.Q2_Actual, 
+    q3 := GVL_RobotData.Q3_Actual, 
+    X_Dir => lrActX, 
+    Y_Dir => lrActY, 
+    Theta => lrActTheta,
+	R_Dir => lrActR    
+);
+
+fbWaitTimer(
+    IN := bWaitEnable,
+    PT := T#50S
+);
+CASE iState OF
+	0: // Initialization State
+        
+            
+// Initialization for Approchig to A point 
+
+// 1. Capture the exact starting position of the robot right now
+lrApproachStartX     := lrActX;
+lrApproachStartY     := lrActY;
+lrApproachStartTheta := lrActTheta;
+
+// 2. Calculate the distance and direction to Point A
+lrDX_App  := stPointA[1] - lrApproachStartX;
+lrDY_App  := stPointA[2] - lrApproachStartY;
+lrDTh_App := stPointA[3] - lrApproachStartTheta;
+
+// 3. Calculate the total approach length
+lrL_App   := MAX(0.001, SQRT(lrDX_App*lrDX_App + lrDY_App*lrDY_App));
+
+// 4. Update the status message for the GUI
+
+
+// --- Line 1: A to B ---
+            lrDX1  := stPointB[1] - stPointA[1];
+            lrDY1  := stPointB[2] - stPointA[2];
+            lrDTh1 := stPointB[3] - stPointA[3];
+            lrL1   := MAX(0.001, SQRT(lrDX1*lrDX1 + lrDY1*lrDY1));
+            
+            // --- Line 2: B to C ---
+            lrDX2  := stPointC[1] - stPointB[1];
+            lrDY2  := stPointC[2] - stPointB[2];
+            lrDTh2 := stPointC[3] - stPointB[3];
+            lrL2   := MAX(0.001, SQRT(lrDX2*lrDX2 + lrDY2*lrDY2));
+            
+            // --- Line 3: C to A ---
+            lrDX3  := stPointA[1] - stPointC[1];
+            lrDY3  := stPointA[2] - stPointC[2];
+            lrDTh3 := stPointA[3] - stPointC[3];
+            lrL3   := MAX(0.001, SQRT(lrDX3*lrDX3 + lrDY3*lrDY3));
+			
+			
+            
+            // --- Reset Global Motion Variables ---
+            lrS_T   := 0; // Current distance along path
+            lrS_dot := 0; // Current velocity
+			
+			// PID SEction
+			// 1. Setup X-Axis Parameters
+        stParamsX.tCtrlCycleTime := T#10MS;
+        stParamsX.tTaskCycleTime := T#10MS;
+        stParamsX.fKp            := 1.5;   // Proportional Gain
+        stParamsX.tTn            := T#100MS; // Integral Time
+        stParamsX.fOutMaxLimit   := 100;   // Safety: Max speed limit (mm/s)
+        stParamsX.fOutMinLimit   := -100;
+        
+        // 2. Setup Y and Theta (Using same parameters or unique ones)
+        stParamsY     := stParamsX;
+        stParamsTheta := stParamsX;
+        
+        // 3. Set the mode to Active for the controllers
+        eMode := eCTRL_MODE_ACTIVE;
+           iCurrentSegment := 5;
+		   GVL_MessageStaus.MessageStaus := 'Robot is approaching Point A.';
+            iState  := 5; // Approching to A point 
+        
+		
+	
+5: // --- APPROACH: Move to Point A ---
+    // Stage 1: Trajectory
+    bAtPointA := UpdateTrapezoid(lrL_total := lrL_App);
+
+    // Stage 2: Path Mapping (Manual mapping for this one-time move)
+    stCurrentSet[1] := lrApproachStartX + (lrDX_App / lrL_App) * lrS_T;
+    stCurrentSet[2] := lrApproachStartY + (lrDY_App / lrL_App) * lrS_T;
+    stCurrentSet[3] := lrApproachStartTheta + (lrDTh_App / lrL_App) * lrS_T;
+    
+    lrVx_FF := (lrDX_App / lrL_App) * lrS_dot;
+    lrVy_FF := (lrDY_App / lrL_App) * lrS_dot;
+    lrVTh_FF := (lrDTh_App / lrL_App) * lrS_dot;
+
+    // Stages 3, 4, 5: ControlLoop, Jacobian, DriveMotors (Call as normal)
+   ControlLoop();
+
+    // STAGE 4: Solving Inverse Jacobian
+    // Transforms Cartesian totals into joint velocities (dqTarget)
+    IF CalculateInverseJacobian(
+        TargetVelX     := lrVx_Total, 
+        TargetVelY     := lrVy_Total, 
+        TargetVelTheta := lrVTh_Total,
+        ActR           := lrActR, 
+        ActTheta       := lrActTheta
+    ) THEN
+        
+        // STAGE 5: Drive Motors
+        DriveMotors(bEnableMotion := TRUE);
+		
+	END_IF
+	IF bAtPointA THEN
+		GVL_MessageStaus.MessageStaus  := 'Robot is Reached A.';
+		bWaitEnable := TRUE;   // start TON;
+		
+		iState := 7;
+	END_IF
+
+
+
+7: // Waiting before Start A-B movement
+
+GVL_MessageStaus.MessageStaus  := 'Waiting For start Main active path';
+  DriveMotors(bEnableMotion := FALSE);
+
+    IF fbWaitTimer.Q THEN
+       bWaitEnable := FALSE;
+		lrS_T := 0;             // Reset progress for the triangle
+        lrS_dot := 0;
+        iCurrentSegment := 10;  // Set for Line A -> B
+        iState := 10;           // Start the main task
+		GVL_MessageStaus.MessageStaus  := 'Robot is Moving from  A To B.';
+    END_IF
+
+10:	
+	// --- CONSOLIDATED ACTIVE MOTION (A -> B -> C -> A) ---
+
+    // STAGE 1: Trajectory Planning
+    // Use a target distance based on the current segment
+    CASE iCurrentSegment OF
+        10: lrL_Target := lrL1;
+        20: lrL_Target := lrL2;
+        30: lrL_Target := lrL3;
+    END_CASE
+
+    // Updates lrS_T and lrS_dot. Returns TRUE when target is reached.
+    bSegmentDone := UpdateTrapezoid(lrL_total := lrL_Target);
+
+    // STAGE 2: Path Mapping
+    // Uses the iCurrentSegment to pick the right dX, dY, dTh and calculate FF
+    UpdatePathSetpoints();
+
+    // STAGE 3: Control Loop (PID)
+    // Results in lrVx_Total, lrVy_Total, lrVTh_Total
+    ControlLoop();
+
+    // STAGE 4: Solving Inverse Jacobian
+    // Transforms Cartesian totals into joint velocities (dqTarget)
+    IF CalculateInverseJacobian(
+        TargetVelX     := lrVx_Total, 
+        TargetVelY     := lrVy_Total, 
+        TargetVelTheta := lrVTh_Total,
+        ActR           := lrActR, 
+        ActTheta       := lrActTheta
+    ) THEN
+        
+        // STAGE 5: Drive Motors
+        DriveMotors(bEnableMotion := TRUE);
+        
+    END_IF
+
+    // --- AUTOMATIC SEGMENT TRANSITION ---
+ IF bSegmentDone THEN
+    bWaitEnable := TRUE; 
+	lrS_T       := 0;     // Safe to reset path distance
+    lrS_dot     := 0;     // Safe to reset velocity ramp
+END_IF
+
+// 2. While the timer is active, override motion to 0.0
+IF bWaitEnable THEN
+    DriveMotors(bEnableMotion := FALSE); // Use your "Active Zero" logic
+	
+
+END_IF
+
+// 3. Monitor the timer independently of the 'Done' flag
+IF fbWaitTimer.Q THEN
+    bWaitEnable := FALSE; // Reset timer for next corner
+    
+    
+    // Increment Segment
+    IF iCurrentSegment = 10 THEN
+        iCurrentSegment := 20;
+        GVL_MessageStaus.MessageStaus := 'Moving B to C.';
+    ELSIF iCurrentSegment = 20 THEN
+        iCurrentSegment := 30;
+        GVL_MessageStaus.MessageStaus := 'Moving C to A.';
+    ELSIF iCurrentSegment = 30 THEN
+        iState := 40; // End of triangle
+        GVL_MessageStaus.MessageStaus := 'Task finished.';
+    END_IF
+END_IF
+	
+	40: // Entire Triangle Complete
+       bActiveModeIsDone := TRUE;
+		
+END_CASE
+*)]]></ST>
+    </Implementation>
+    <Method Name="CalculateInverseJacobian" Id="{bca524da-953c-4fc8-86de-42c46ca20bd0}">
+      <Declaration><![CDATA[METHOD CalculateInverseJacobian : BOOL
+VAR_INPUT
+    // Values passed from your State Machine or PID controllers
+    TargetVelX     : LREAL; 
+    TargetVelY     : LREAL; 
+    TargetVelTheta : LREAL; 
+	ActR           : LREAL; // Pass current R position here
+    ActTheta       : LREAL; // Pass current Beta/Theta position here
+END_VAR
+VAR
+    // Temporary variables used ONLY for this calculation
+    BetaRad   : LREAL;
+    R_mm      : LREAL;
+    DotR      : LREAL; 
+    PI_180    : LREAL := 0.0174532925199433; 
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// 1. Assign local values from FB or GVL sources
+BetaRad := ActTheta * PI_180;
+R_mm    := ActR;
+
+// 2. Singularity Protection
+IF R_mm < 0.1 THEN
+    JointVelTarget[1] := 0.0;
+    JointVelTarget[2] := 0.0;
+    JointVelTarget[3] := 0.0;
+    CalculateInverseJacobian := FALSE;
+    RETURN;
+END_IF
+
+// 3. Intermediate Radial Velocity
+DotR := (TargetVelX * SIN(-BetaRad)) - (TargetVelY * COS(BetaRad));
+
+// 4. Calculate Final Outputs (Stored in FB's JointVelTarget array)
+JointVelTarget[1] := (-TargetVelX * COS(BetaRad) - TargetVelY * SIN(-BetaRad)) 
+                      / (GVL_ConstantCoefficent.K1 * PI_180 * R_mm);
+
+JointVelTarget[2] := (TargetVelTheta / -GVL_ConstantCoefficent.K3) + (DotR / (-2.0 * GVL_ConstantCoefficent.K2));
+JointVelTarget[3] := (TargetVelTheta / -GVL_ConstantCoefficent.K3) - (DotR / (-2.0 * GVL_ConstantCoefficent.K2));
+
+CalculateInverseJacobian := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="ControlLoop" Id="{4de73948-c09c-44ba-9fa8-31958f8bc4e6}">
+      <Declaration><![CDATA[METHOD ControlLoop : BOOL
+
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// 1. AXIS X CONTROL
+fbPidX(
+    fSetpointValue := stCurrentSet[1], // From your Path Planning
+    fActualValue   := lrActX,          // From Forward Kinematics
+    eMode          := eMode,           // Defined in your VAR section
+    stParams       := stParamsX        // Parameters from State 0
+);
+// Total Velocity = Feedforward + PID correction
+lrVx_Total := lrVx_FF + fbPidX.fOut; 
+
+// 2. AXIS Y CONTROL
+fbPidY(
+    fSetpointValue := stCurrentSet[2], 
+    fActualValue   := lrActY, 
+    eMode          := eMode, 
+    stParams       := stParamsY
+);
+lrVy_Total := lrVy_FF + fbPidY.fOut;
+
+// 3. AXIS THETA CONTROL
+fbPidTheta(
+    fSetpointValue := stCurrentSet[3], 
+    fActualValue   := lrActTheta, 
+    eMode          := eMode, 
+    stParams       := stParamsTheta
+);
+lrVTh_Total := lrVTh_FF + fbPidTheta.fOut;
+
+
+
+
+ControlLoop := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="DriveMotors" Id="{cf567ea0-d638-4523-83ce-ade8812572d0}">
+      <Declaration><![CDATA[METHOD DriveMotors : BOOL
+VAR_INPUT
+	bEnableMotion : BOOL;
+END_VAR
+VAR
+    fbMoveVel_Axis1 : MC_MoveVelocity;
+    fbMoveVel_Axis2 : MC_MoveVelocity;
+    fbMoveVel_Axis3 : MC_MoveVelocity;
+	numM1Direction : MC_Direction;
+	numM2Direction : MC_Direction;
+	numM3Direction : MC_Direction;
+	
+	
+	lrTargetVelM1: LREAL;
+	lrTargetVelM2 : LREAL;
+	lrTargetVelM3 : LREAL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// 1. Determine Direction for Axis 1 based on Jacobian Output
+IF JointVelTarget[1] >= 0 THEN
+    numM1Direction := MC_Positive_Direction;
+ELSE
+    numM1Direction := MC_Negative_Direction;
+END_IF
+
+// 2. Execute Axis 1 Motion
+IF bEnableMotion THEN
+    lrTargetVelM1 := ABS(JointVelTarget[1]);
+	
+ELSE
+    lrTargetVelM1 := 0.0; // Force zero during state 7
+END_IF
+fbMoveVel_Axis1(
+    Axis          := GVL_Axes.Axis1,
+    Execute       := TRUE, 
+    Velocity      := lrTargetVelM1 ,   // Use Absolute value since direction is explicit
+    Acceleration  := lrAcc,              // Acc/Dec must always be positive
+    Deceleration  := lrAcc, 
+    Direction     := numM1Direction,     // Explicitly set to Positive or Negative
+    BufferMode    := MC_Aborting
+);
+
+// 3. Repeat Logic for Axis 2
+IF JointVelTarget[2] >= 0 THEN
+    numM2Direction := MC_Positive_Direction;
+ELSE
+    numM2Direction := MC_Negative_Direction;
+END_IF
+
+IF bEnableMotion THEN
+    lrTargetVelM2 := ABS(JointVelTarget[2]);
+	
+ELSE
+    lrTargetVelM2 := 0.0; // Force zero during state 7
+END_IF
+
+fbMoveVel_Axis2(
+    Axis          := GVL_Axes.Axis2,
+    Execute       := TRUE,
+    Velocity      := lrTargetVelM2,
+    Acceleration  := lrAcc,
+    Deceleration  := lrAcc,
+    Direction     := numM2Direction
+);
+
+// 4. Repeat Logic for Axis 3
+IF JointVelTarget[3] >= 0 THEN
+    numM3Direction := MC_Positive_Direction;
+ELSE
+    numM3Direction := MC_Negative_Direction;
+END_IF
+IF bEnableMotion THEN
+    lrTargetVelM3 := ABS(JointVelTarget[3]);
+	
+ELSE
+    lrTargetVelM3 := 0.0; // Force zero during state 7
+END_IF
+fbMoveVel_Axis3(
+    Axis          := GVL_Axes.Axis3,
+    Execute       := TRUE,
+    Velocity      := lrTargetVelM3,
+    Acceleration  := lrAcc,
+    Deceleration  := lrAcc,
+    Direction     := numM3Direction
+);]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UpdatePathSetpoints" Id="{afe8f62b-7f0b-4015-b6bd-3dadbcb0284b}">
+      <Declaration><![CDATA[METHOD UpdatePathSetpoints : BOOL
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+CASE iCurrentSegment OF
+    10: // Line A -> B
+        IF lrL1 > 0.0 THEN
+            stCurrentSet[1] := stPointA[1] + (lrDX1 / lrL1) * lrS_T;
+            stCurrentSet[2] := stPointA[2] + (lrDY1 / lrL1) * lrS_T;
+            stCurrentSet[3] := stPointA[3] + (lrDTh1 / lrL1) * lrS_T;
+            
+            // Calculate Feedforward Velocities (Unit Vector * Current Speed)
+            lrVx_FF := (lrDX1 / lrL1) * lrS_dot;
+            lrVy_FF := (lrDY1 / lrL1) * lrS_dot;
+            lrVTh_FF := (lrDTh1 / lrL1) * lrS_dot;
+        END_IF;
+
+    20: // Line B -> C
+        IF lrL2 > 0.0 THEN
+            stCurrentSet[1] := stPointB[1] + (lrDX2 / lrL2) * lrS_T;
+            stCurrentSet[2] := stPointB[2] + (lrDY2 / lrL2) * lrS_T;
+            stCurrentSet[3] := stPointB[3] + (lrDTh2 / lrL2) * lrS_T;
+            
+            lrVx_FF := (lrDX2 / lrL2) * lrS_dot;
+            lrVy_FF := (lrDY2 / lrL2) * lrS_dot;
+            lrVTh_FF := (lrDTh2 / lrL2) * lrS_dot;
+        END_IF;
+
+    30: // Line C -> A
+        IF lrL3 > 0.0 THEN
+            stCurrentSet[1] := stPointC[1] + (lrDX3 / lrL3) * lrS_T;
+            stCurrentSet[2] := stPointC[2] + (lrDY3 / lrL3) * lrS_T;
+            stCurrentSet[3] := stPointC[3] + (lrDTh3 / lrL3) * lrS_T;
+            
+            lrVx_FF := (lrDX3 / lrL3) * lrS_dot;
+            lrVy_FF := (lrDY3 / lrL3) * lrS_dot;
+            lrVTh_FF := (lrDTh3 / lrL3) * lrS_dot;
+        END_IF;
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UpdateTrapezoid" Id="{5d01fc75-0d50-45ca-b45d-00d552f26609}">
+      <Declaration><![CDATA[METHOD UpdateTrapezoid : BOOL
+VAR_INPUT
+	lrL_total : LREAL;
+	
+END_VAR
+
+VAR
+		
+    dist_rem  : LREAL;
+    CycleTime : LREAL := 0.01;  //plc cycle time is 10 ms
+	S_dec : LREAL; // calcullated stopping distance
+	
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// This method calculates the current velocity and distance scalar for the move.
+
+s_dec := (lrVmax * lrVmax) / (2.0 * lrAcc);
+dist_rem := lrL_total - lrS_T;
+
+IF dist_rem > s_dec THEN
+    lrS_dot := MIN(lrS_dot + (lrAcc * CycleTime), lrVmax);
+ELSE
+    lrS_dot := SQRT(2.0 * lrAcc * MAX(0.0, dist_rem));
+END_IF
+
+lrS_T := lrS_T + (lrS_dot * CycleTime);
+
+IF dist_rem <= 0.001 THEN
+    UpdateTrapezoid := TRUE; // Signal segment complete
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_RobotIsActive">
+      <LineId Id="1655" Count="0" />
+      <LineId Id="1322" Count="205" />
+      <LineId Id="261" Count="0" />
+      <LineId Id="1656" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotIsActive.CalculateInverseJacobian">
+      <LineId Id="6" Count="22" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotIsActive.ControlLoop">
+      <LineId Id="7" Count="26" />
+      <LineId Id="36" Count="1" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotIsActive.DriveMotors">
+      <LineId Id="12" Count="7" />
+      <LineId Id="75" Count="1" />
+      <LineId Id="82" Count="0" />
+      <LineId Id="77" Count="1" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="20" Count="15" />
+      <LineId Id="84" Count="5" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="36" Count="15" />
+      <LineId Id="90" Count="4" />
+      <LineId Id="52" Count="7" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotIsActive.UpdatePathSetpoints">
+      <LineId Id="87" Count="34" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_RobotIsActive.UpdateTrapezoid">
+      <LineId Id="49" Count="1" />
+      <LineId Id="36" Count="12" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

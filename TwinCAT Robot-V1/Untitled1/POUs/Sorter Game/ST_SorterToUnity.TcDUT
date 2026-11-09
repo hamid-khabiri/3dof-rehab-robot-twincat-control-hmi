@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_SorterToUnity" Id="{40177290-663e-4356-bcc7-e06b5be988f5}">
+    <Declaration><![CDATA[TYPE ST_SorterToUnity :
+STRUCT
+    fX           : REAL;    // X position 0–100%
+    GameIsActive : BOOL;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

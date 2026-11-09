@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_ConstantCoefficent" Id="{b838ede1-6a1e-4d37-916d-3b03db7bf569}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+// These number is checked two times, the error between Absolute and Incremental Encoder is under 1% that is acceptable
+// Root of error is related to timing belt 
+
+
+VAR_GLOBAL
+	K2: LREAL :=24.40;  // calculate with result of absolute encoder
+	
+	K3: LREAL :=219.726; // calculate with result of absolute encoder
+	K1: LREAL := 9.97; // calculate with result of absolute encoder
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

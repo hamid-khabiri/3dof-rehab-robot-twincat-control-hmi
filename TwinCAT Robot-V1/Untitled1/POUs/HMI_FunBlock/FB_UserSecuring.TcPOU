@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_UserSecuring" Id="{98b06f09-a7a7-4a24-9d32-965708ae7914}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_UserSecuring
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF GVL_HMI.check1 AND GVL_HMI.check2 AND GVL_HMI.check3 AND GVL_HMI.check4 AND GVL_HMI.check5 AND GVL_HMI.check6 THEN
+	
+GVL_HMI.ContinueTOWorkspaceLimits := TRUE;
+ELSE
+	
+GVL_HMI.ContinueTOWorkspaceLimits := FALSE;
+
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="FB_UserSecuring">
+      <LineId Id="9" Count="1" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="14" Count="2" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="11" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

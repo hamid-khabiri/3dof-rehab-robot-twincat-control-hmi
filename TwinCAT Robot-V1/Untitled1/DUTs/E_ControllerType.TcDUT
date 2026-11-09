@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_ControllerType" Id="{24afa684-1fff-4f85-ae09-80b241d85b4e}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_ControllerType :
+(
+    ControlNone         := 0,
+
+    ControlPosition     := 1,
+
+    ControlVelocity     := 2,
+
+    ControlTorque       := 3,
+
+    ControlForce        := 4,
+
+    ControlImpedance    := 5,
+
+    ControlAdmittance   := 6,
+
+    ControlHybrid       := 7,
+
+    ControlCustom       := 8
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

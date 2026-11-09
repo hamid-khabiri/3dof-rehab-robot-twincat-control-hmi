@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_PeelerFromUnity" Id="{d0b1034e-bfd7-4ec5-9ce2-ae1ffc876a50}">
+    <Declaration><![CDATA[{attribute 'pack_mode' := '1'}
+TYPE ST_PeelerFromUnity :
+STRUCT
+	bInContact    : BOOL;    // Fruit collision state
+    nObjectType   : INT;     // 1 = Kiwi, 2 = Orange, 3 = Pineapple
+    bGameFinished : BOOL;    // TRUE when the user clicks the Close button in Unity
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

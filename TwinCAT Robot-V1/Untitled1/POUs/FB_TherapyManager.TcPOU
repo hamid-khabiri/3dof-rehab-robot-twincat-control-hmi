@@ -1,0 +1,425 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_TherapyManager" Id="{0603581c-6ac6-4e31-a7a5-f9a10feab27e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_TherapyManager
+
+VAR_INPUT
+	Enable         : BOOL;
+    Config         : ST_TherapyConfig;       // The struct we just built!
+    ActualJoints    : ST_JointState;        // Feedback: Joint q, q_dot, M
+    ActualCartesian : ST_CartesianState;    // Feedback: Cartesian Pose, Vel, Force
+    TargetCartesian : ST_CartesianTarget;   // Target: Cartesian Pose, Vel, Force setpoints
+    SimpleJointTorqueObtainedFromGames : ST_JointTorque;
+    fbKinematics    : REFERENCE TO FB_RobotKinematics;
+	WallSetPointXandY : ARRAY[1..4, 1..2] OF LREAL;
+END_VAR
+VAR_OUTPUT
+	TargetJointsTorque    : ST_JointTorque;        // Output for CST Mode
+	//TargetMode      : En_TargetMode;              // Drive mode (eCSP, eCSV, eCST)
+    //  Out_Positions  : ST_JointPositions;      // Output for CSV Mode
+END_VAR
+VAR
+	// 1. The Expert Math Blocks
+    fbImpedance    : FB_ImpedanceController;
+    fbAdmittance   : FB_AdmittanceController;
+	fbForceYield : FB_ForceController;
+    fbDynamics     : FB_DynamicsCompensator;
+    
+    // 2. Internal Routing Variables
+    TherapyForces   : ST_CartesianForces;             // Cartesian Space (End-Effector force)
+    TherapyTorque   : ST_JointTorque;                 // Joint Space (Therapy motor torque)
+    CompTorque      : ST_JointTorque;                 // Joint Space (Hardware compensation torque)
+	timerHold : TON;
+	
+	// Wall Variables
+	WallTorque : ST_JointTorque;
+	fbVirtualWall : FB_VirtuallWall;
+	bWallInContact : BOOL;
+	WallCartesianForce: ST_CartesianForces;
+	MotionState: INT := 1;
+	//cycle: INT;
+	CycleMotion: INT :=1;
+	
+	
+	fbMicroswitchCheck : MicroswitchCheck;   // Delete this after cycling test
+	fbStopM1 : MC_Stop;
+	fbStopM2 : MC_Stop;
+	fbStopM3 : MC_Stop;
+	firsttime: BOOL := TRUE;
+END_VAR
+VAR CONSTANT
+    // Zero constants for clean single-line memory resets
+    cZeroTorque : ST_JointTorque    := (M1 := 0.0, M2 := 0.0, M3 := 0.0);
+    cZeroForces : ST_CartesianForces := (Fx := 0.0, Fy := 0.0, Mtheta := 0.0);
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// =========================================================
+// 1. SAFETY DISABLE GUARD
+// =========================================================
+IF NOT Enable THEN
+    TargetJointsTorque := cZeroTorque;
+	
+   
+    RETURN;
+END_IF
+
+// =========================================================
+// 2. CLEAR INTERMEDIATE BUFFERS (PREVENT STALE DATA LEAKS)
+// =========================================================
+TherapyForces := cZeroForces;
+TherapyTorque := cZeroTorque;
+WallTorque := cZeroTorque;
+CompTorque    := cZeroTorque;
+
+// =========================================================
+// 3. PRIMARY CONTROLLER ROUTING
+// =========================================================
+CASE Config.ControllerType OF
+
+    E_ControllerType.ControlNone:
+        TherapyTorque := SimpleJointTorqueObtainedFromGames;
+		
+		(*
+
+    E_ControllerType.ControlImpedance:
+        // Step A: Virtual spring-damper computes interaction forces
+        fbImpedance(
+            Stiffness   := Config.Stiffness_K,
+            Damping     := Config.Damping_D,
+            ActualPose  := ActualCartesian.Position,
+            TargetPose  := TargetCartesian.Position,
+            ActualVel   := ActualCartesian.Velocity,
+            TargetVel   := TargetCartesian.Velocity,
+            OutputForce => TherapyForces
+        );
+        
+        // Step B: Map Cartesian Force -> Joint Torque via J^T
+        TherapyTorque := fbKinematics.ApplyJacobianTranspose(Force := TherapyForces);
+
+    E_ControllerType.ControlAdmittance:
+        // Measured patient forces generate target positions / velocities
+        fbAdmittance(
+            TherapyMode     := Config.TherapyMode,
+            VirtualMass     := Config.Mass_M,
+            VirtualDamp     := Config.Damping_D,
+            MeasuredForces  := ActualCartesian.Forces,
+            TargetForces    := TargetCartesian.Forces,
+            ActualPose      := ActualCartesian.Position,
+            TargetPosition  => TargetJoints.Position
+        );
+
+    E_ControllerType.ControlForce:
+        // Generic Yield-Threshold / Breakaway Force Controller
+        fbForceYield(
+            ForceThreshold := Config.ForceConfig.Threshold, // Generic resistance force
+            VirtualDamping := Config.ForceConfig.Damping,   // Generic motion viscosity
+            ActualForce    := ActualCartesian.Forces,
+            ActualJoints   := ActualJoints,
+            OutputTorque   => TherapyTorque
+        );
+		*)
+
+END_CASE
+
+// =========================================================
+// 4. HARDWARE DYNAMICS COMPENSATION (Joint Space)
+// =========================================================
+
+(*
+
+IF Config.FeatureFrictionComp OR Config.FeatureInertiaComp OR Config.FeatureGravityComp THEN
+    fbDynamics(
+        JointPosition  := ActualJoints.Position,
+        JointVelocity  := ActualJoints.Velocity,
+        EnableGravity  := Config.FeatureGravityComp,
+        EnableFriction := Config.FeatureFrictionComp,
+        EnableInertia  := Config.FeatureInertiaComp,
+        CompTorque     => CompTorque
+    );
+END_IF
+*)
+// Cycle Test
+(* 
+
+IF  firsttime THEN
+GVL_hmi.CheckMicroswitchLinearMax := FALSE;
+GVL_hmi.CheckMicroswitchLinearMin := FALSE;
+GVL_hmi.CheckMicroswitchRotationLeft := FALSE;
+GVL_hmi.CheckMicroswitchRotationRight := FALSE;
+GVL_HMI.CheckMicroswitchWristLeft := FALSE;
+GVL_HMI.CheckMicroswitchWristRight := FALSE;
+firsttime := FALSE;
+END_IF
+// Tests
+fbMicroswitchCheck();
+IF GVL_hmi.CheckMicroswitchLinearMax OR GVL_hmi.CheckMicroswitchLinearMin OR
+ GVL_hmi.CheckMicroswitchRotationLeft OR GVL_hmi.CheckMicroswitchRotationRight OR 
+ GVL_HMI.CheckMicroswitchWristLeft OR GVL_HMI.CheckMicroswitchWristRight
+
+THEN
+ 
+	fbStopM1(
+        Axis      := GVL_Axes.Axis1,
+        Execute   := TRUE);   
+
+    fbStopM2(
+        Axis      := GVL_Axes.Axis2,
+        Execute   := TRUE);
+
+    fbStopM3(
+        Axis      := GVL_Axes.Axis3,
+        Execute   := TRUE);
+END_IF
+
+CASE MotionState OF
+	1: // Motor1 +_
+		TherapyTorque.M1 := -8.0;
+		TherapyTorque.M2 := 0.0;
+		TherapyTorque.M3 := 0.0;
+		IF ActualCartesian.Position.X> 200.0 THEN
+			
+		TherapyTorque.M1 :=  0.05* ActualCartesian.Velocity.Vx;
+		TherapyTorque.M2 := 0.0;
+		TherapyTorque.M3 := 0.0;
+		timerHold(IN := TRUE, PT := T#1S);
+		
+		IF timerHold.Q THEN
+            timerHold(IN := FALSE); // Reset the timer so it can be reused later
+            MotionState := 2;
+        END_IF
+			
+		END_IF
+	2: // linear +
+		TherapyTorque.M1 := 0.0;
+		TherapyTorque.M2 := 8.0;
+		TherapyTorque.M3 := -8.0;
+		
+		IF ActualCartesian.Position.Y> 300.0 THEN
+		TherapyTorque.M1 := 0.0;
+		TherapyTorque.M2 :=  - 0.05* ActualCartesian.Velocity.Vy;
+		TherapyTorque.M3 :=  0.05* ActualCartesian.Velocity.Vy;
+		timerHold(IN := TRUE, PT := T#1S);
+		
+		IF timerHold.Q THEN
+            timerHold(IN := FALSE); // Reset the timer so it can be reused later
+            MotionState := 3;
+		END_IF
+		END_IF
+	 3: // Motor1 -
+		TherapyTorque.M1 := 8.0;
+		TherapyTorque.M2 := 0.0;
+		TherapyTorque.M3 := 0.0;
+		
+		IF ActualCartesian.Position.X< -50.0 THEN
+		TherapyTorque.M1 := 0.05* ActualCartesian.Velocity.Vx;
+		TherapyTorque.M2:= 0.0;
+		TherapyTorque.M3 := 0.0;
+		timerHold(IN := TRUE, PT := T#1S);
+		
+		IF timerHold.Q THEN
+            timerHold(IN := FALSE); // Reset the timer so it can be reused later
+            MotionState := 4;
+		END_IF
+		END_IF
+	 4: // linear -
+		TherapyTorque.M1 := 0.0;
+		TherapyTorque.M2 := -8.0;
+		TherapyTorque.M3 := 8.0;
+		
+		
+		IF ActualCartesian.Position.Y< 150.0 THEN
+		TherapyTorque.M1 := 0.0;
+		TherapyTorque.M2 :=  - 0.05* ActualCartesian.Velocity.Vy;
+		TherapyTorque.M3 :=  0.05* ActualCartesian.Velocity.Vy;
+		timerHold(IN := TRUE, PT := T#1S);
+		
+		IF timerHold.Q THEN
+            timerHold(IN := FALSE); // Reset the timer so it can be reused later
+			CycleMotion := CycleMotion+1;
+		IF CycleMotion = 500 THEN
+            MotionState := 5;
+		ELSE
+	MotionState := 1;
+			
+		END_IF
+		END_IF
+		END_IF
+		
+		
+	 5: 
+		TherapyTorque.M1 := 0.0;
+		TherapyTorque.M2 := 0.0;
+		TherapyTorque.M3 := 0.0;
+		
+	 
+	 
+	
+END_CASE
+
+*)// Cycle Test
+
+// VirtualWallTorque
+
+fbVirtualWall(
+    bEnable     := GVL_HMI.EableVirtuallWall_Planar,
+	Endeffectorstatus := ActualCartesian,
+	WallSetPointXandY := WallSetPointXandY,
+	WallCartesianForce => WallCartesianForce,
+	bInContact  => bWallInContact
+    
+);
+
+WallTorque :=
+    fbKinematics.CartesianForceToTorque(
+        Force := WallCartesianForce
+    );
+
+
+
+
+
+// =========================================================
+// 5. FINAL TORQUE SUMMATION & GLOBAL SAFETY CLAMP
+// =========================================================
+IF bWallInContact THEN
+
+    // Virtual wall is active:
+    // use wall torque only
+    TargetJointsTorque.M1 := LIMIT(
+        -Config.GlobalForceLimit,
+        WallTorque.M1,
+        Config.GlobalForceLimit
+    );
+
+    TargetJointsTorque.M2 := LIMIT(
+        -Config.GlobalForceLimit,
+        WallTorque.M2,
+        Config.GlobalForceLimit
+    );
+
+    TargetJointsTorque.M3 := LIMIT(
+        -Config.GlobalForceLimit,
+        WallTorque.M3,
+        Config.GlobalForceLimit
+    );
+
+ELSE
+
+    // No wall contact:
+    // normal robot torque
+    TargetJointsTorque.M1 := LIMIT(
+        -Config.GlobalForceLimit,
+        TherapyTorque.M1 + CompTorque.M1,
+        Config.GlobalForceLimit
+    );
+
+    TargetJointsTorque.M2 := LIMIT(
+        -Config.GlobalForceLimit,
+        TherapyTorque.M2 + CompTorque.M2,
+        Config.GlobalForceLimit
+    );
+
+    TargetJointsTorque.M3 := LIMIT(
+        -Config.GlobalForceLimit,
+        TherapyTorque.M3 + CompTorque.M3,
+        Config.GlobalForceLimit
+    );
+
+END_IF;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_TherapyManager">
+      <LineId Id="106" Count="4" />
+      <LineId Id="206" Count="0" />
+      <LineId Id="111" Count="8" />
+      <LineId Id="324" Count="0" />
+      <LineId Id="120" Count="4" />
+      <LineId Id="232" Count="3" />
+      <LineId Id="275" Count="1" />
+      <LineId Id="236" Count="36" />
+      <LineId Id="277" Count="0" />
+      <LineId Id="273" Count="0" />
+      <LineId Id="166" Count="4" />
+      <LineId Id="278" Count="2" />
+      <LineId Id="171" Count="10" />
+      <LineId Id="644" Count="0" />
+      <LineId Id="642" Count="1" />
+      <LineId Id="638" Count="0" />
+      <LineId Id="493" Count="1" />
+      <LineId Id="634" Count="3" />
+      <LineId Id="641" Count="0" />
+      <LineId Id="640" Count="0" />
+      <LineId Id="495" Count="0" />
+      <LineId Id="608" Count="0" />
+      <LineId Id="613" Count="0" />
+      <LineId Id="626" Count="0" />
+      <LineId Id="628" Count="1" />
+      <LineId Id="627" Count="0" />
+      <LineId Id="631" Count="0" />
+      <LineId Id="616" Count="9" />
+      <LineId Id="614" Count="1" />
+      <LineId Id="498" Count="0" />
+      <LineId Id="497" Count="0" />
+      <LineId Id="501" Count="0" />
+      <LineId Id="504" Count="2" />
+      <LineId Id="524" Count="0" />
+      <LineId Id="544" Count="0" />
+      <LineId Id="541" Count="1" />
+      <LineId Id="540" Count="0" />
+      <LineId Id="545" Count="0" />
+      <LineId Id="549" Count="0" />
+      <LineId Id="546" Count="2" />
+      <LineId Id="543" Count="0" />
+      <LineId Id="525" Count="1" />
+      <LineId Id="508" Count="3" />
+      <LineId Id="531" Count="0" />
+      <LineId Id="528" Count="0" />
+      <LineId Id="550" Count="6" />
+      <LineId Id="529" Count="0" />
+      <LineId Id="527" Count="0" />
+      <LineId Id="571" Count="0" />
+      <LineId Id="512" Count="3" />
+      <LineId Id="536" Count="0" />
+      <LineId Id="538" Count="0" />
+      <LineId Id="557" Count="6" />
+      <LineId Id="539" Count="0" />
+      <LineId Id="537" Count="0" />
+      <LineId Id="572" Count="0" />
+      <LineId Id="516" Count="3" />
+      <LineId Id="605" Count="1" />
+      <LineId Id="534" Count="0" />
+      <LineId Id="564" Count="1" />
+      <LineId Id="607" Count="0" />
+      <LineId Id="567" Count="3" />
+      <LineId Id="580" Count="0" />
+      <LineId Id="588" Count="0" />
+      <LineId Id="535" Count="0" />
+      <LineId Id="601" Count="1" />
+      <LineId Id="579" Count="0" />
+      <LineId Id="533" Count="0" />
+      <LineId Id="576" Count="0" />
+      <LineId Id="603" Count="0" />
+      <LineId Id="577" Count="1" />
+      <LineId Id="520" Count="3" />
+      <LineId Id="532" Count="0" />
+      <LineId Id="507" Count="0" />
+      <LineId Id="503" Count="0" />
+      <LineId Id="499" Count="1" />
+      <LineId Id="496" Count="0" />
+      <LineId Id="492" Count="0" />
+      <LineId Id="323" Count="0" />
+      <LineId Id="313" Count="1" />
+      <LineId Id="343" Count="1" />
+      <LineId Id="354" Count="0" />
+      <LineId Id="694" Count="0" />
+      <LineId Id="355" Count="0" />
+      <LineId Id="408" Count="0" />
+      <LineId Id="353" Count="0" />
+      <LineId Id="315" Count="1" />
+      <LineId Id="402" Count="2" />
+      <LineId Id="317" Count="5" />
+      <LineId Id="182" Count="2" />
+      <LineId Id="409" Count="43" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

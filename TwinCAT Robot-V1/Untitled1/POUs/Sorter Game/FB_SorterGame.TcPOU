@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SorterGame" Id="{4cb2c5cb-feb0-4d4b-b9db-abd069a78b57}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SorterGame
+VAR_INPUT
+    bEnable                   : BOOL;
+    stCartesianPosePercentage : ST_CartesianPose;  // same as PeelingGame
+	CartesianForcefx            : LREAL ; 
+  //  RehabilitationController: E_ControllerType;
+	CartesianVx : LREAL;
+END_VAR
+VAR
+    stToUnity : ST_SorterToUnity;
+	stFromUnity : ST_UnityToSorter;
+	FXThreshold    : REAL := 3.0 ;  // Minimum Force to create Resistive Force;
+	VXThreshold : LREAL := 10.0;
+END_VAR
+
+VAR_OUTPUT
+	stJointTargetTorque : ST_JointTorque;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Default outputs
+stJointTargetTorque.M1 := 0.0;
+stJointTargetTorque.M2 := 0.0;
+stJointTargetTorque.M3 := 0.0;
+
+stToUnity.GameIsActive := FALSE;
+
+
+IF bEnable THEN
+
+    // Send X position to Unity
+    stToUnity.fX := stCartesianPosePercentage.X;
+
+    IF NOT stFromUnity.bGameClosed THEN
+
+        stToUnity.GameIsActive := TRUE;
+
+
+        (****************************************************
+            CONDITION 1: POSITIVE X MOVEMENT
+
+            Both Vx and Fx must be positive
+            and exceed their thresholds.
+
+            Apply NEGATIVE resistance.
+        *****************************************************)
+
+        IF (CartesianVx > VXThreshold)
+           AND (CartesianForcefX > FXThreshold) THEN
+
+            CASE stFromUnity.nGameStatus OF
+
+                0: // Not playing
+                    stJointTargetTorque.M1 := 0.0;
+
+                1: // Light bin
+                    stJointTargetTorque.M1 := 0.0;
+
+                2: // Medium bin
+                    stJointTargetTorque.M1 := 7.0;
+
+                3: // Heavy bin
+                    stJointTargetTorque.M1 := 15.0;
+
+                ELSE
+                    stJointTargetTorque.M1 := 0.0;
+
+            END_CASE;
+
+
+        (****************************************************
+            CONDITION 2: NEGATIVE X MOVEMENT
+
+            Both Vx and Fx must be negative
+            and below their negative thresholds.
+
+            Apply POSITIVE resistance.
+        *****************************************************)
+
+        ELSIF (CartesianVx < -VXThreshold)
+              AND (CartesianForcefX < -FXThreshold) THEN
+
+            CASE stFromUnity.nGameStatus OF
+
+                0: // Not playing
+                    stJointTargetTorque.M1 := 0.0;
+
+                1: // Light bin
+                    stJointTargetTorque.M1 := 0.0;
+
+                2: // Medium bin
+                    stJointTargetTorque.M1 := -7.0;
+
+                3: // Heavy bin
+                    stJointTargetTorque.M1 := -15.0;
+
+                ELSE
+                    stJointTargetTorque.M1 := 0.0;
+
+            END_CASE;
+
+        ELSE
+
+            // Force and velocity conditions not satisfied
+            stJointTargetTorque.M1 := 0.0;
+
+        END_IF;
+	
+	ELSE
+		
+		GVL_HMI.bLaunchGameSorter:= FALSE;
+	
+	END_IF
+
+  
+
+END_IF;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_SorterGame">
+      <LineId Id="184" Count="86" />
+      <LineId Id="291" Count="1" />
+      <LineId Id="295" Count="1" />
+      <LineId Id="293" Count="1" />
+      <LineId Id="271" Count="2" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_FireflyGame" Id="{ad23fd71-7d0b-47c5-8565-d6840de5b81e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FireflyGame
+VAR_INPUT
+    bEnable                   : BOOL;
+    stCartesianPosePercentage : ST_CartesianPose; // from Kinematics: X -100..+100 %, Y 0..100 % (0..370 mm)
+END_VAR
+VAR_OUTPUT
+    stJointTargetTorque : ST_JointTorque;  // always 0: Firefly is motion-only, no actuation
+    nGameStatus         : INT;             // Unity game status, for MAIN / HMI
+    bExitRequested      : BOOL;            // TRUE for ONE PLC cycle when Exit is pressed in Unity
+    bWrongFlowerEvent   : BOOL;            // TRUE for ONE PLC cycle per wrong flower (for later haptics)
+END_VAR
+VAR
+    stToUnity   : ST_FireflyToUnity;
+    stFromUnity : ST_FireflyFromUnity;
+
+    // Calibration: robot percent (from Kinematics) at home, and travel either side of home
+    // that brings the firefly to the edge of the garden (= +/-100 % in Unity).
+    fXHome      : REAL := 0.0;    // X percent at home (middle of the workspace)
+    fYHome      : REAL := 50.0;   // Y percent at home (middle of 0..370 mm = 185 mm)
+    fXHalfRange : REAL := 50.0;   // X: lower this if X needs less motion than Y
+    fYHalfRange : REAL := 25.0;   // Y: +/-25 % = 50 % of the Y range of motion in total
+
+    rtExit  : R_TRIG;
+    rtWrong : R_TRIG;
+    fXRaw   : REAL;
+    fYRaw   : REAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Firefly is motion-only: never apply torque.
+stJointTargetTorque.M1 := 0.0;
+stJointTargetTorque.M2 := 0.0;
+stJointTargetTorque.M3 := 0.0;
+
+IF bEnable THEN
+    fXRaw := TO_REAL(stCartesianPosePercentage.X);
+    fYRaw := TO_REAL(stCartesianPosePercentage.Y);
+    // Home -> 0 %, home +/- half range -> +/-100 %, clamped so the firefly stays inside the garden.
+    stToUnity.fX := LIMIT(-100.0, (fXRaw - fXHome) / MAX(fXHalfRange, 0.1) * 100.0, 100.0);
+    stToUnity.fY := LIMIT(-100.0, (fYRaw - fYHome) / MAX(fYHalfRange, 0.1) * 100.0, 100.0);
+ELSE
+    stToUnity.fX := 0.0;   // firefly waits on the home flower
+    stToUnity.fY := 0.0;
+END_IF
+
+// Unity's pulses -> one-cycle events for MAIN (each new pulse = a new rising edge).
+rtExit(CLK := stFromUnity.bExitPressed);
+rtWrong(CLK := stFromUnity.bWrongFlower);
+bExitRequested    := rtExit.Q;
+bWrongFlowerEvent := rtWrong.Q;
+nGameStatus       := stFromUnity.nGameStatus;
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_FireflyGame">
+      <LineId Id="37" Count="21" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

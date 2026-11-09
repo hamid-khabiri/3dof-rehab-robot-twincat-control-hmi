@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340">
+  <!-- Earpiece tips -->
+  <circle cx="93" cy="14" r="7" fill="#1A365D"/>
+  <circle cx="177" cy="14" r="7" fill="#1A365D"/>
+
+  <!-- Earpiece tubes up -->
+  <path d="M 93 14 L 93 28" fill="none" stroke="#1A365D" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 177 14 L 177 28" fill="none" stroke="#1A365D" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Y-tubes converging -->
+  <path d="M 93 28 Q 93 75 135 80" fill="none" stroke="#1A365D" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 177 28 Q 177 75 135 80" fill="none" stroke="#1A365D" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Center connector -->
+  <rect x="130" y="75" width="10" height="22" rx="3" fill="#1A365D"/>
+
+  <!-- Main tube with loop -->
+  <path d="M 135 97
+           C 135 135, 75 145, 75 185
+           C 75 225, 120 235, 140 215
+           C 160 195, 120 185, 120 215
+           C 120 245, 185 265, 225 265
+           C 265 265, 265 235, 265 215"
+        fill="none" stroke="#1A365D" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Connection to ring -->
+  <line x1="265" y1="215" x2="265" y2="270" stroke="#1A365D" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Motiva ring = chest piece -->
+  <circle cx="265" cy="305" r="32" fill="none" stroke="#1A365D" stroke-width="7"/>
+
+  <!-- Orbiting green end-effector dot -->
+  <circle cx="265" cy="273" r="7" fill="#2F855A">
+    <animateTransform attributeName="transform" type="rotate"
+      from="0 265 305" to="360 265 305" dur="9s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Subtle pulse at ring center -->
+  <circle cx="265" cy="305" r="3" fill="#2F855A" opacity="0.4">
+    <animate attributeName="r" values="3;7;3" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite"/>
+  </circle>
+</svg>

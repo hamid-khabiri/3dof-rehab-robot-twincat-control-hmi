@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- person silhouette (dashed = temporary/guest) -->
+  <circle cx="50" cy="30" r="16" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-dasharray="8 4"/>
+  <path d="M 50 46 C 50 46 20 54 20 74 L 20 92 L 80 92 L 80 74 C 80 54 50 46 50 46 Z"
+        fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-dasharray="8 4" stroke-linejoin="round"/>
+  <!-- question mark badge (white circle, navy text for contrast) -->
+  <circle cx="76" cy="24" r="14" fill="#FFFFFF"/>
+  <text x="76" y="30" font-family="Segoe UI, system-ui, sans-serif" font-weight="700"
+        font-size="18" fill="#1A365D" text-anchor="middle">?</text>
+</svg>

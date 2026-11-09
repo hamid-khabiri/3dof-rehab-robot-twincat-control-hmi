@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_UnityToCrazyCar" Id="{d90cda5f-081c-4b28-9ffa-ecf826a0623f}">
+    <Declaration><![CDATA[TYPE ST_UnityToCrazyCar  :
+STRUCT
+	bGameClosed : BOOL;   // TRUE = Unity game closed
+    nGameStatus : INT;    // 0 = menu/popup, 1 = Taxi, 2 = Van, 3 = Truck
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

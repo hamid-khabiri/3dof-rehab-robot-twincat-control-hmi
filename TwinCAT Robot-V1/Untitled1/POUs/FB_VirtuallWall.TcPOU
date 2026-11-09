@@ -1,0 +1,346 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_VirtuallWall" Id="{4cae9348-5aca-4356-91af-151fb3802725}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_VirtuallWall
+VAR_INPUT
+	bEnable     : BOOL ;     // Enable Virtual Wall Controller
+    Endeffectorstatus : ST_CartesianState;
+    fStiffness  : LREAL := 0.06;     // Virtual Wall Stiffness K [N/mm]
+    fDamping    : LREAL := 0.01;    // Virtual Wall Damping B [N/(mm/s)]
+	WallSetPointXandY : ARRAY[1..4, 1..2] OF LREAL ;
+END_VAR
+VAR_OUTPUT
+	WallCartesianForce : ST_CartesianForces;
+	bInContact  : BOOL;
+END_VAR
+VAR
+	// Pre-calculated geometric constant for slanted lines: SQRT(157^2 + 150^2)
+    cNorm23     : LREAL := 217.138209447043; 
+
+    // walls Position
+	TopWall_Constant : LREAL  := 260.0; //  y =Constant   This number is predefined walls if set new upperside wall it will change
+	BottomWall_Constant : LREAL  := -10.0; // Bottom Wall (y = Constant) This number is predefined walls if set new upperside wall it will change
+	RightWall_A : LREAL; // Ax+By + C=0 for right wall
+	RightWall_B : LREAL;  // Ax+By + C =0for right wall
+	RightWall_C : LREAL;  // Ax+By + C=0 for right wall
+	
+	LeftWall_A : LREAL; // Ax+By + C =0 for Left wall 
+	LeftWall_B : LREAL; // Ax+By + C=0 for Left wall
+	LeftWall_C : LREAL; // Ax+By + C =0 for Left wall
+	
+	
+    NormTop      : ARRAY[1..2] OF LREAL := [ 0.0, -1.0];             // Top Wall (y = 260)
+    
+    NormBottom      : ARRAY[1..2] OF LREAL := [ 0.0,  1.0];             // Bottom Wall (y = -10)
+
+  // Calculation Virtuall Wall 
+  x_COR_CartezianforCalculationRightLeftWall : LREAL := 0.0; //Center of rotation in cartezian (x=0 y=)
+  y_COR_CartezianforCalculationRightLeftWall : LREAL := 464.0;  //Center of rotation in cartezian (x=0 y=)
+  y_SetwallRightWall : LREAL;
+  x_SetwallRightWall : LREAL;
+  y_SetwallLeftWall : LREAL;
+  x_SetwallLeftWall : LREAL;
+  RightWall_NormalMagnitude : LREAL;
+  NormRight     : ARRAY[1..2] OF LREAL;  // Right Wall
+  LeftWall_NormalMagnitude : LREAL;
+  NormLeft     : ARRAY[1..2] OF LREAL;  // Left Wall
+
+
+// Calculation Variables
+    fDelta      : LREAL;            // Penetration depth [mm]
+    fVnormal    : LREAL;            // Velocity along inward normal [mm/s]
+    fDampEff    : LREAL;            // Non-sticky effective damping force
+    fForceMag   : LREAL;            // Force magnitude for individual wall
+	
+	///
+	fForceX     : LREAL;            // Virtual Wall Restoring Force X [N]
+    fForceY     : LREAL;            // Virtual Wall Restoring Force Y [N]
+                 // TRUE if penetrating any boundary
+	fActY: LREAL;
+	fActX: LREAL;
+	fActXdot: LREAL;
+	fActYdot: LREAL;
+	fbRobotKinematicForJacobianInverse : FB_RobotKinematics;
+	WallJointState : ST_JointState;
+	
+//	JointData_Transed: INT;
+ 
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TopWall_Constant := WallSetPointXandY[1,2];
+BottomWall_Constant := WallSetPointXandY [2,2];
+x_SetwallRightWall := WallSetPointXandY [3,1];
+y_SetwallRightWall :=  WallSetPointXandY [3,2];
+x_SetwallLeftWall := WallSetPointXandY [4,1];
+y_SetwallLeftWall := WallSetPointXandY [4,2];
+
+// Reset outputs at start of cycle
+fForceX := 0.0;
+fForceY := 0.0;
+bInContact := FALSE;
+
+
+// Right wall equation: A*x + B*y + C = 0
+
+RightWall_A :=
+    y_COR_CartezianforCalculationRightLeftWall - y_SetwallRightWall;
+
+RightWall_B :=
+    x_SetwallRightWall - x_COR_CartezianforCalculationRightLeftWall;
+
+RightWall_C :=
+    (x_COR_CartezianforCalculationRightLeftWall * y_SetwallRightWall)
+    - (x_SetwallRightWall * y_COR_CartezianforCalculationRightLeftWall);
+
+
+// UnitNormal of Right wall
+
+RightWall_NormalMagnitude := SQRT(
+    RightWall_A * RightWall_A +
+    RightWall_B * RightWall_B
+);
+
+IF RightWall_NormalMagnitude > 0.001 THEN
+    NormRight[1] := -RightWall_A / RightWall_NormalMagnitude;
+    NormRight[2] := -RightWall_B / RightWall_NormalMagnitude;
+ELSE
+    NormRight[1] := 0.0;
+    NormRight[2] := 0.0;
+END_IF;
+
+
+
+// Left wall equation: A*x + B*y + C = 0
+
+LeftWall_A :=
+    y_COR_CartezianforCalculationRightLeftWall - y_SetwallLeftWall;
+
+LeftWall_B :=
+    x_SetwallLeftWall - x_COR_CartezianforCalculationRightLeftWall;
+
+LeftWall_C :=
+    (x_COR_CartezianforCalculationRightLeftWall * y_SetwallLeftWall)
+    - (x_SetwallLeftWall * y_COR_CartezianforCalculationRightLeftWall);
+	
+	// UnitNormal of Left wall
+
+LeftWall_NormalMagnitude := SQRT(
+    LeftWall_A * LeftWall_A +
+    LeftWall_B * LeftWall_B
+);
+
+IF LeftWall_NormalMagnitude > 0.001 THEN
+    NormLeft[1] := LeftWall_A / LeftWall_NormalMagnitude;
+    NormLeft[2] := LeftWall_B / LeftWall_NormalMagnitude;
+ELSE
+    NormLeft[1] := 0.0;
+    NormLeft[2] := 0.0;
+END_IF;
+
+
+// 
+
+fActX := Endeffectorstatus.Position.X;
+fActY := Endeffectorstatus.Position.Y;
+fActXdot := Endeffectorstatus.Velocity.Vx;
+fActYdot := Endeffectorstatus.Velocity.Vy;
+
+
+WallCartesianForce.Fx := 0.0;
+WallCartesianForce.Fy := 0.0;
+WallCartesianForce.Mtheta := 0.0;
+
+
+IF NOT bEnable THEN
+    RETURN;
+END_IF;
+
+
+
+
+
+// -------------------------------------------------------------
+// LINE 1: Top Wall 
+// -------------------------------------------------------------
+fDelta := fActY - TopWall_Constant; 
+IF fDelta > 0.0 THEN
+    bInContact := TRUE;
+    fVnormal := (fActXdot * NormTop[1]) + (fActYdot * NormTop[2]);
+    
+    // Apply damping only when moving deeper into the wall
+    IF fVnormal < 0.0 THEN
+        fDampEff := -fDamping * fVnormal;
+    ELSE
+        fDampEff := 0.0;
+    END_IF;
+    
+    fForceMag := (fStiffness * fDelta) + fDampEff;
+    fForceX := fForceX + (fForceMag * NormTop[1]);
+    fForceY := fForceY + (fForceMag * NormTop[2]);
+END_IF;
+
+// -------------------------------------------------------------
+// LINE 2: RIGHT WALL (Ax + By + C = 0)
+// -------------------------------------------------------------
+
+IF RightWall_NormalMagnitude > 0.001 THEN
+
+    fDelta := (
+        RightWall_A * fActX +
+        RightWall_B * fActY +
+        RightWall_C
+    ) / RightWall_NormalMagnitude;
+
+    IF fDelta > 0.0 THEN
+
+        bInContact := TRUE;
+
+        fVnormal :=
+            (fActXdot * NormRight[1]) +
+            (fActYdot * NormRight[2]);
+
+        // Apply damping only when moving deeper into the wall
+        IF fVnormal < 0.0 THEN
+            fDampEff := -fDamping * fVnormal;
+        ELSE
+            fDampEff := 0.0;
+        END_IF;
+
+        fForceMag := (fStiffness * fDelta) + fDampEff;
+
+        fForceX := fForceX + (fForceMag * NormRight[1]);
+        fForceY := fForceY + (fForceMag * NormRight[2]);
+
+    END_IF;
+
+END_IF;
+
+
+// -------------------------------------------------------------
+// LINE 3: LEFT WALL (Ax + By + C = 0)
+// -------------------------------------------------------------
+
+IF LeftWall_NormalMagnitude > 0.001 THEN
+
+    fDelta := -(
+        LeftWall_A * fActX +
+        LeftWall_B * fActY +
+        LeftWall_C
+    ) / LeftWall_NormalMagnitude;
+
+    IF fDelta > 0.0 THEN
+
+        bInContact := TRUE;
+
+        fVnormal :=
+            (fActXdot * NormLeft[1]) +
+            (fActYdot * NormLeft[2]);
+
+        // Apply damping only when moving deeper into the wall
+        IF fVnormal < 0.0 THEN
+            fDampEff := -fDamping * fVnormal;
+        ELSE
+            fDampEff := 0.0;
+        END_IF;
+
+        fForceMag := (fStiffness * fDelta) + fDampEff;
+
+        fForceX := fForceX + (fForceMag * NormLeft[1]);
+        fForceY := fForceY + (fForceMag * NormLeft[2]);
+
+    END_IF;
+
+END_IF;
+
+// -------------------------------------------------------------
+// LINE 4: Bottom Wall (y = -10 mm)
+// -------------------------------------------------------------
+
+
+fDelta := BottomWall_Constant - fActY;
+
+IF fDelta > 0.0 THEN
+
+    bInContact := TRUE;
+
+    fVnormal :=
+        (fActXdot * NormBottom[1]) +
+        (fActYdot * NormBottom[2]);
+
+    IF fVnormal < 0.0 THEN
+        fDampEff := -fDamping * fVnormal;
+    ELSE
+        fDampEff := 0.0;
+    END_IF;
+
+    fForceMag := (fStiffness * fDelta) + fDampEff;
+
+    fForceX := fForceX + (fForceMag * NormBottom[1]);
+    fForceY := fForceY + (fForceMag * NormBottom[2]);
+
+END_IF;
+
+ GVL_HMI.VirtualWallContact := bInContact;
+WallCartesianForce.Fx := fForceX;
+ WallCartesianForce.Fy := fForceY;
+ WallCartesianForce.Mtheta := 0.0; // wrist 
+  
+ 
+
+ 
+ ]]></ST>
+    </Implementation>
+    <LineIds Name="FB_VirtuallWall">
+      <LineId Id="412" Count="0" />
+      <LineId Id="427" Count="0" />
+      <LineId Id="216" Count="0" />
+      <LineId Id="424" Count="2" />
+      <LineId Id="215" Count="0" />
+      <LineId Id="127" Count="4" />
+      <LineId Id="312" Count="1" />
+      <LineId Id="315" Count="8" />
+      <LineId Id="314" Count="0" />
+      <LineId Id="337" Count="1" />
+      <LineId Id="287" Count="0" />
+      <LineId Id="362" Count="3" />
+      <LineId Id="361" Count="0" />
+      <LineId Id="339" Count="0" />
+      <LineId Id="349" Count="5" />
+      <LineId Id="333" Count="3" />
+      <LineId Id="288" Count="0" />
+      <LineId Id="324" Count="8" />
+      <LineId Id="289" Count="0" />
+      <LineId Id="366" Count="0" />
+      <LineId Id="368" Count="12" />
+      <LineId Id="367" Count="0" />
+      <LineId Id="290" Count="0" />
+      <LineId Id="437" Count="1" />
+      <LineId Id="440" Count="0" />
+      <LineId Id="439" Count="0" />
+      <LineId Id="441" Count="1" />
+      <LineId Id="291" Count="1" />
+      <LineId Id="539" Count="0" />
+      <LineId Id="543" Count="1" />
+      <LineId Id="540" Count="2" />
+      <LineId Id="132" Count="3" />
+      <LineId Id="433" Count="3" />
+      <LineId Id="136" Count="19" />
+      <LineId Id="443" Count="33" />
+      <LineId Id="212" Count="0" />
+      <LineId Id="478" Count="35" />
+      <LineId Id="477" Count="0" />
+      <LineId Id="213" Count="0" />
+      <LineId Id="194" Count="2" />
+      <LineId Id="516" Count="22" />
+      <LineId Id="230" Count="1" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="545" Count="0" />
+      <LineId Id="243" Count="0" />
+      <LineId Id="245" Count="0" />
+      <LineId Id="244" Count="0" />
+      <LineId Id="242" Count="0" />
+      <LineId Id="234" Count="2" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

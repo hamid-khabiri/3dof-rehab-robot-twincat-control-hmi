@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_GameID" Id="{652515b1-df6e-4fdb-a9fb-d1a009778ded}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_GameID :
+(
+    NONE        := 0,
+    PONG        := 1,
+    PEELING     := 2,
+    GOLD_MINER  := 3,
+    BALLOON     := 4,
+    SNOW_WIPER  := 5,
+    SORTER      := 6,
+    FLOWER      := 7,
+    CRAZY_CAR   := 8
+);
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

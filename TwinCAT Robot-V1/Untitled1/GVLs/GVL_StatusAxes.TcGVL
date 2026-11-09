@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_StatusAxes" Id="{b20d0f8a-1be7-410b-9a21-bc9857137b29}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	ErrorAxis1 	AT %I* : INT;
+	ErrorAxis2 	AT %I*: INT;
+	ErrorAxis3 	AT %I*: INT;
+	//Driver1Status AT %I* : UINT;
+	Driver2Status AT %I* : UINT;
+	Driver3Status AT %I* : UINT;
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

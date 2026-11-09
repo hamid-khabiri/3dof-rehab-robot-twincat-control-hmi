@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CartesianForces" Id="{7f2c5f4f-9e9b-45a2-8a7b-a444146ca18b}">
+    <Declaration><![CDATA[TYPE ST_CartesianForces :
+STRUCT
+	Fx     : LREAL; // Linear force along X (N)
+    Fy     : LREAL; // Linear force along Y (N)
+    Mtheta : LREAL; // Moment/Torque around Theta wrist axis (Nm)
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

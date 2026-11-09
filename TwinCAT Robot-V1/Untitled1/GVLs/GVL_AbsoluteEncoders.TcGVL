@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="GVL_AbsoluteEncoders" Id="{41acc025-99db-4313-b396-7394fb224741}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	AbsoluteBetaPosition AT %I* : DINT;
+	AbsoluteLinearPosition AT %I* : DINT;
+	AbsoluteTetaPosition AT %I* : DINT;
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

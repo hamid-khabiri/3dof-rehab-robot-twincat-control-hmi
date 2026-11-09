@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="ST_CrazyCarToUnity" Id="{130d1da2-5919-496b-b334-4df4b3d18836}">
+    <Declaration><![CDATA[TYPE ST_CrazyCarToUnity :
+STRUCT
+	fY           : REAL;   // gas, Y position 0..100 %
+    fWristAngle  : REAL;   // wrist angle, degrees, 0 = home
+    GameIsActive : BOOL;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

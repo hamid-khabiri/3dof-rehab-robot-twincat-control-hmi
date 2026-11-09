@@ -1,0 +1,193 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_ForceTorqueSensor" Id="{de9e2500-7e50-45aa-926a-97fb4e30e09b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_ForceTorqueSensor
+VAR_IN_OUT
+ CartesianState : ST_CartesianState;
+ 
+END_VAR
+VAR_INPUT
+	CartesianPosAdditionalParameter :ST_CartesianAdditionalParametes;
+END_VAR
+VAR
+    eState : E_CalibrationState :=  E_CalibrationState.INIT;
+    tWait  : TON;
+	FxTemp : LREAL;
+	FyTemp : LREAL;
+	MzTemp : LREAL;
+	OffsetRawFx: LINT;
+	OffsetRawFy: LINT;
+	OffsetRawMz: LINT;
+	sumFx: LINT;
+	sumFy: LINT;
+	sumMz: LINT;
+	nSample: INT;
+	rTrigZero : R_TRIG;
+	Theta1: LREAL;
+	Theta2: LREAL;
+	Theta3: LREAL;
+END_VAR
+VAR CONSTANT
+    CMD_STOP   : DWORD := 16#0000000C;
+    CMD_FILTER : DWORD := 16#00050108;  // 1st-order LPF, 100 Hz
+    CMD_START  : DWORD := 16#0000000B;
+    FORCE_DIV  : REAL := 50.0;     // RFT60-HA01 force divider
+	TORQUE_DIV : REAL := 2000.0;   // RFT60-HA01 torque divider
+	CostanstAngleBetweenFTSensorAndXdirection : LREAL := 30.0; // Unit Degree
+	CostanstAngleBetweenFTSensorAndYdirection : LREAL := 30.0; // Unit Degree
+	ZeroingSample : INT := 100;
+	
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+
+CASE eState OF
+E_CalibrationState.INIT:
+    GVL_ForceTorqueSensor.ConfigParameter := CMD_STOP;
+    tWait(IN := TRUE, PT := T#1000MS);
+    IF tWait.Q THEN tWait(IN := FALSE); eState := E_CalibrationState.SET_FILTER; END_IF
+
+E_CalibrationState.SET_FILTER:
+   GVL_ForceTorqueSensor.ConfigParameter := CMD_FILTER;
+    tWait(IN := TRUE, PT := T#1000MS);
+    IF tWait.Q THEN tWait(IN := FALSE); eState := E_CalibrationState.START; END_IF
+
+E_CalibrationState.START:
+    GVL_ForceTorqueSensor.ConfigParameter := CMD_START;
+    eState := E_CalibrationState.WaitingforCalibrationButton;
+	sumFx := 0; sumFy := 0;  sumMz := 0;
+	
+E_CalibrationState.WaitingforCalibrationButton:
+
+rTrigZero(CLK := GVL_HMI.StartCalibrationButton);
+
+IF rTrigZero.Q THEN
+
+    
+   
+    GVL_HMI.StartCalibrationButton := FALSE;
+	eState := E_CalibrationState.ZEROING;
+	sumFx := 0;
+	sumFy := 0;
+	sumMz := 0;
+	nSample := 0;
+	tWait(IN := FALSE);   // reset timer
+
+END_IF
+
+	
+E_CalibrationState.ZEROING:
+   
+
+	tWait(IN := TRUE, PT := T#2000MS);          // let streaming/filter settle first
+    IF tWait.Q THEN
+        sumFx := sumFx + GVL_ForceTorqueSensor.RawFx;
+        sumFy := sumFy + GVL_ForceTorqueSensor.RawFy;
+        sumMz := sumMz + GVL_ForceTorqueSensor.RawMz;
+        nSample := nSample + 1;
+        IF nSample >= ZeroingSample THEN
+            OffsetRawFx := sumFx / ZeroingSample;
+            OffsetRawFy := sumFy / ZeroingSample;
+            OffsetRawMz := sumMz / ZeroingSample;
+            eState := E_CalibrationState.RUNNING;
+        END_IF
+    END_IF
+
+
+
+E_CalibrationState.RUNNING:
+IF GVL_HMI.StartCalibrationButton THEN
+	 GVL_HMI.StartCalibrationButton := FALSE;
+
+    sumFx := 0;
+    sumFy := 0;
+    sumMz := 0;
+    nSample := 0;
+
+    tWait(IN := FALSE);
+
+    eState := E_CalibrationState.ZEROING;
+END_IF
+// All Angles that is used for rotational frames;
+Theta1:= CostanstAngleBetweenFTSensorAndXdirection;   //UNIT: degree   Shift for F/t Sensor, it is related to design and I got from SOLIDWORKS// this number is constant;
+Theta2 := -CartesianPosAdditionalParameter.BetaIncremental; // UNIT: degree  the angle between frame x,y with refrence
+Theta3 := -Cartesianstate.Position.Theta; //UNIT: degree  the wrist angle between x-frame of wrist with x-frame of reference
+//
+    FxTemp := LINT_TO_REAL(GVL_ForceTorqueSensor.RawFx- OffsetRawFx) / FORCE_DIV;
+    FyTemp := LINT_TO_REAL(GVL_ForceTorqueSensor.RawFy-OffsetRawFy) / FORCE_DIV;
+    MzTemp := LINT_TO_REAL(GVL_ForceTorqueSensor.RawMz-OffsetRawMz) / TORQUE_DIV;
+	CartesianState.Force.Fx :=-( FxTemp * COS((Theta1 + Theta2 + Theta3)*(PI / 180.0))-
+	FyTemp * SIN((Theta1 + Theta2 + Theta3)*(PI / 180.0)));
+	
+	GVL_HMI.Fx_HMI := CartesianState.Force.Fx ; // Display in HMI
+	
+	CartesianState.Force.Fy := -(FxTemp * SIN((Theta1 + Theta2 + Theta3)*(PI / 180.0))+
+	FyTemp * COS((Theta1 + Theta2 + Theta3)*(PI / 180.0)));
+	
+	GVL_HMI.Fy_HMI := CartesianState.Force.Fy; // Display in HMI
+	CartesianState.Force.Mtheta := MzTemp ;
+	GVL_HMI.Mz_HMI := CartesianState.Force.Mtheta*1000;  // Display in HMI //Unit : mNM
+
+
+
+
+END_CASE
+
+IF eState = E_CalibrationState.RUNNING THEN
+	GVL_HMI.UserSecuringButton_HMI := TRUE;
+	ELSE
+	GVL_HMI.UserSecuringButton_HMI := FALSE;	
+END_IF
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_ForceTorqueSensor">
+      <LineId Id="158" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="10" Count="14" />
+      <LineId Id="184" Count="0" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="182" Count="0" />
+      <LineId Id="172" Count="4" />
+      <LineId Id="179" Count="1" />
+      <LineId Id="183" Count="0" />
+      <LineId Id="231" Count="2" />
+      <LineId Id="230" Count="0" />
+      <LineId Id="234" Count="0" />
+      <LineId Id="181" Count="0" />
+      <LineId Id="168" Count="0" />
+      <LineId Id="166" Count="0" />
+      <LineId Id="165" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="30" Count="17" />
+      <LineId Id="185" Count="0" />
+      <LineId Id="235" Count="8" />
+      <LineId Id="228" Count="0" />
+      <LineId Id="187" Count="0" />
+      <LineId Id="276" Count="0" />
+      <LineId Id="278" Count="1" />
+      <LineId Id="281" Count="0" />
+      <LineId Id="277" Count="0" />
+      <LineId Id="48" Count="4" />
+      <LineId Id="285" Count="0" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="284" Count="0" />
+      <LineId Id="155" Count="0" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="286" Count="0" />
+      <LineId Id="124" Count="0" />
+      <LineId Id="156" Count="1" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="288" Count="2" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="221" Count="0" />
+      <LineId Id="220" Count="0" />
+      <LineId Id="222" Count="0" />
+      <LineId Id="225" Count="2" />
+      <LineId Id="224" Count="0" />
+      <LineId Id="223" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

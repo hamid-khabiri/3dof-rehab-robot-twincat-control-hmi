@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_MainState" Id="{0b801a89-80be-47c2-a7de-9b0fddb5b7c4}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_MainState :
+(
+	Init                := 0,
+    Homing              := 10,
+    ClearNCErrors       := 20,
+    ChangingDriverMode        := 30,
+    Standby             := 40,  // NEW: Motors are ON, holding position, waiting for HMI start
+    RunningTherapy      := 50,  // NEW: The robot is actively doing rehab
+    Fault               := 99
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

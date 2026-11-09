@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_JointStateReader" Id="{e983a58f-22d5-4e70-8e5f-c7973e5e6651}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_JointStateReader
+VAR_INPUT
+    Enable : BOOL := TRUE;
+END_VAR
+
+VAR_IN_OUT
+    Axis1 : AXIS_REF;
+    Axis2 : AXIS_REF;
+    Axis3 : AXIS_REF;
+END_VAR
+
+VAR_OUTPUT
+    JointState : ST_JointState; // Contains Position, Velocity, and Torque
+END_VAR
+
+VAR
+    
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// --- 1. Position (q1, q2, q3) ---
+JointState.Position.q1     := Axis1.NcToPlc.ActPos;
+JointState.Position.q2     := Axis2.NcToPlc.ActPos;
+JointState.Position.q3     := Axis3.NcToPlc.ActPos;
+
+// --- 2. Velocity (q1_dot, q2_dot, q3_dot) ---
+JointState.Velocity.q1_dot := Axis1.NcToPlc.ActVelo;
+JointState.Velocity.q2_dot := Axis2.NcToPlc.ActVelo;
+JointState.Velocity.q3_dot := Axis3.NcToPlc.ActVelo;
+
+// --- 3. Torque / Moment (M1, M2, M3) ---
+JointState.Torque.M1       := Axis1.NcToPlc.ActTorque;
+JointState.Torque.M2       := Axis2.NcToPlc.ActTorque;
+JointState.Torque.M3       := Axis3.NcToPlc.ActTorque;
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_JointStateReader">
+      <LineId Id="37" Count="12" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="67" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

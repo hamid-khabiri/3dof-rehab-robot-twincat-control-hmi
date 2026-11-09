@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220">
+  <!-- Motiva ring with medical cross inside -->
+  <circle cx="100" cy="50" r="32" fill="none" stroke="#1A365D" stroke-width="6"/>
+  <circle cx="100" cy="18" r="7" fill="#2F855A">
+    <animateTransform attributeName="transform" type="rotate"
+      from="0 100 50" to="360 100 50" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <!-- medical cross inside the ring — navy like the patients -->
+  <rect x="93" y="34" width="14" height="32" rx="3" fill="#1A365D"/>
+  <rect x="84" y="43" width="32" height="14" rx="3" fill="#1A365D"/>
+
+  <!-- left person (outline, behind) -->
+  <circle cx="55" cy="128" r="15" fill="none" stroke="#1A365D" stroke-width="4"/>
+  <path d="M 55 143 C 55 143 30 149 30 168 L 30 190 L 80 190 L 80 168
+           C 80 149 55 143 55 143 Z"
+        fill="none" stroke="#1A365D" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- right person (outline, behind) -->
+  <circle cx="145" cy="128" r="15" fill="none" stroke="#1A365D" stroke-width="4"/>
+  <path d="M 145 143 C 145 143 120 149 120 168 L 120 190 L 170 190 L 170 168
+           C 170 149 145 143 145 143 Z"
+        fill="none" stroke="#1A365D" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- center person (filled, front) -->
+  <circle cx="100" cy="122" r="17" fill="#1A365D"/>
+  <path d="M 100 139 C 100 139 70 146 70 168 L 70 195 L 130 195 L 130 168
+           C 130 146 100 139 100 139 Z" fill="#1A365D"/>
+</svg>
