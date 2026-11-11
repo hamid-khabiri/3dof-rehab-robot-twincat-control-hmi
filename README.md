@@ -86,14 +86,14 @@ Welcome and login · Preparation (micro-switch check, robot homing, sensor calib
 
 Each game has a function block in the PLC (`MAIN.fbCrazyCar`, `MAIN.fbFireflyGame`, `MAIN.fbPeelingGame`, `MAIN.fbSorterGame`) with a `stToUnity` structure (robot end-effector position / wrist angle, normalized for the game) and a `stFromUnity` structure (game status and events). The Unity side connects with `TcAdsClient`, reads the robot data every frame and writes the game state back; the PLC adapts the robot to it, for example by selecting the resistance torque for the level being played.
 
-| Game | Movement trained | Game design and development |
-|---|---|---|
-| Crazy Car | Forward/backward reach + wrist rotation | Simon Corazza |
-| Firefly Garden | 2-D reaching to targets | Grecia Michelle Luis |
-| Fruit Peeler | Repeated vertical strokes | Grecia Michelle Luis |
-| Cargo Sorter | Medial–lateral reaching with graded load | Grecia Michelle Luis |
+| Game | Movement trained |
+|---|---|
+| Crazy Car | Forward/backward reach + wrist rotation |
+| Firefly Garden | 2-D reaching to targets |
+| Fruit Peeler | Repeated vertical strokes |
+| Cargo Sorter | Medial–lateral reaching with graded load |
 
-PLC side, ADS communication and robot integration: Hamid Khabiri. Details, data tables and code locations: [`Unity-Games/README.md`](Unity-Games/README.md).
+Games designed, revised and integrated with the robot by Hamid Khabiri (project lead), who also developed the ADS link and the PLC side. Initial Unity implementation by co-developers Simon Corazza (Crazy Car) and Grecia Michelle Luis (Firefly Garden, Fruit Peeler, Cargo Sorter). Details, data tables and code locations: [`Unity-Games/README.md`](Unity-Games/README.md).
 
 ---
 

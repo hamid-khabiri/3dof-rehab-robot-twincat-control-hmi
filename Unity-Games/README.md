@@ -75,9 +75,9 @@ Only the project's own C# scripts are included. **Not included:** Unity scenes, 
 
 | Person | Role |
 |---|---|
-| **Hamid Khabiri, PhD** | Robot design and control; TwinCAT PLC side of every game; ADS communication between the PLC and Unity; therapy and safety integration |
-| **Simon Corazza** | Game designer and developer — **Crazy Car** |
-| **Grecia Michelle Luis** | Game designer and developer — **Firefly Garden**, **Fruit Peeler**, **Cargo Sorter** |
+| **Hamid Khabiri, PhD** | **Project lead and supervisor.** Designed the four games (concepts, rules, levels and the therapy movements they train); revised and extended the Unity implementation; designed and implemented the Unity ↔ TwinCAT ADS connectors and data structures and the PLC side of every game; integrated, tested and tuned the games on the robot |
+| **Simon Corazza** | Co-developer — initial Unity implementation of **Crazy Car** |
+| **Grecia Michelle Luis** | Co-developer — initial Unity implementation of **Firefly Garden**, **Fruit Peeler** and **Cargo Sorter** |
 
 Developed at the University of Alberta, Edmonton, Canada.
 
