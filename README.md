@@ -1,9 +1,18 @@
-# 3-DOF Upper-Limb Rehabilitation Robot — TwinCAT 3 Control Software & HMI
+# 3-DOF Upper-Limb Rehabilitation Robot — TwinCAT 3 Control Software, HMI & Unity Games
 
-Real-time control software and operator interface for a custom **3-DOF planar upper-limb rehabilitation robot**, developed in **Beckhoff TwinCAT 3** with **EtherCAT** servo control and a **TwinCAT HMI (TE2000)** operator interface.
+Real-time control software and operator interface for a custom **3-DOF planar upper-limb rehabilitation robot**, developed in **Beckhoff TwinCAT 3** with **EtherCAT** servo control, a **TwinCAT HMI (TE2000)** operator interface, and four **Unity** rehabilitation games connected to the PLC through **TwinCAT ADS**.
 
 **Author:** Hamid Khabiri, PhD — Robotics Engineer
-**Portfolio:** [hamid-khabiri.github.io](https://hamid-khabiri.github.io) · Project page with videos: [3-DOF Upper-Limb Rehabilitation Robot](https://hamid-khabiri.github.io/projects/upper-limb-rehabilitation-robot.html)
+
+**Portfolio:** [hamid-khabiri.github.io](https://hamid-khabiri.github.io)
+
+**Project page with videos:** [3-DOF Upper-Limb Rehabilitation Robot](https://hamid-khabiri.github.io/projects/upper-limb-rehabilitation-robot.html)
+
+| What | Where |
+|---|---|
+| PLC control software (Structured Text) | [`TwinCAT Robot-V1/`](TwinCAT%20Robot-V1) |
+| Operator interface (TwinCAT HMI) | [`TcHmiProject1/`](TcHmiProject1) |
+| Unity games and PLC ↔ Unity ADS link (C#) | [`Unity-Games/`](Unity-Games) — see its [README](Unity-Games/README.md) |
 
 ---
 
@@ -16,7 +25,7 @@ Real-time control software and operator interface for a custom **3-DOF planar up
 | Real-time control | **TwinCAT 3 PLC/NC** in Structured Text |
 | Sensing | Absolute encoders, 6-axis **force/torque sensor**, limit (micro) switches |
 | Operator interface | **TwinCAT HMI (TE2000)** — preparation, calibration, therapy configuration, monitoring |
-| Games | Unity rehabilitation games exchanging data with the PLC via **ADS** |
+| Games | Four Unity rehabilitation games exchanging data with the PLC via **TwinCAT ADS** (`Unity-Games/`) |
 
 ### Control architecture
 - **Cascaded control:** EPOS4 inner current / velocity / position loops, with outer-loop joint PID controllers in TwinCAT.
@@ -42,6 +51,8 @@ TwinCAT Robot-V1/                    TwinCAT 3 system project (EtherCAT I/O, NC 
     GVLs/                            Global variable lists
     VISUs/                           PLC visualizations
 TcHmiProject1/                       TwinCAT HMI project (pages, views, images, themes)
+Unity-Games/                         C# source of the four Unity games and their ADS connectors
+  CrazyCar/  FireflyGarden/  FruitPeeler/  CargoSorter/
 ```
 
 ### Main PLC function blocks
@@ -71,6 +82,21 @@ Welcome and login · Preparation (micro-switch check, robot homing, sensor calib
 
 ---
 
+## Unity games (PLC ↔ Unity over ADS)
+
+Each game has a function block in the PLC (`MAIN.fbCrazyCar`, `MAIN.fbFireflyGame`, `MAIN.fbPeelingGame`, `MAIN.fbSorterGame`) with a `stToUnity` structure (robot end-effector position / wrist angle, normalized for the game) and a `stFromUnity` structure (game status and events). The Unity side connects with `TcAdsClient`, reads the robot data every frame and writes the game state back; the PLC adapts the robot to it, for example by selecting the resistance torque for the level being played.
+
+| Game | Movement trained | Game design and development |
+|---|---|---|
+| Crazy Car | Forward/backward reach + wrist rotation | Simon Corazza |
+| Firefly Garden | 2-D reaching to targets | Grecia Michelle Luis |
+| Fruit Peeler | Repeated vertical strokes | Grecia Michelle Luis |
+| Cargo Sorter | Medial–lateral reaching with graded load | Grecia Michelle Luis |
+
+PLC side, ADS communication and robot integration: Hamid Khabiri. Details, data tables and code locations: [`Unity-Games/README.md`](Unity-Games/README.md).
+
+---
+
 ## Opening the project
 
 1. Install **TwinCAT 3.1 XAE** and **TwinCAT HMI Engineering (TE2000)**.
@@ -81,11 +107,11 @@ Welcome and login · Preparation (micro-switch check, robot homing, sensor calib
 > Running the software requires the matching hardware (Maxon EPOS4 drives, EtherCAT I/O, force/torque sensor) and a TwinCAT runtime license.
 
 ## Not included
-Build output, TwinCAT boot files and licenses, HMI packages and publish logs, measurement/scope projects and logged data, and HMI server security files (private key and user password hashes).
+Unity scenes, art, audio and third-party Unity packages (only the games' C# scripts are included); build output, TwinCAT boot files and licenses, HMI packages and publish logs, measurement/scope projects and logged data, and HMI server security files (private key and user password hashes).
 
 ---
 
 ## Copyright
 
-© 2026 Hamid Khabiri. **All rights reserved.**
+© 2026 Hamid Khabiri. **All rights reserved.** (The Unity games are © 2026 Hamid Khabiri, Simon Corazza and Grecia Michelle Luis.)
 This code is published for portfolio and review purposes only. No license is granted to copy, modify, distribute or use it, in whole or in part, without written permission.
